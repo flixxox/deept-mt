@@ -4,7 +4,7 @@ import torch.nn as nn
 from . import register_model
 from deept.util.timer import Timer
 from deept.model.model import MTModel
-from deept.util.globals import Globals
+from deept.util.globals import Settings
 from deept.model.state import DynamicState
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
@@ -321,7 +321,7 @@ class LinearMultiHeadAttentionLayer(nn.Module):
         v = v.view(B, -1, self.H, self.Dh)
         v = self.transpose(v, 1, 2)
 
-        if Globals.is_training() or not self.stepwise:
+        if Settings.is_training() or not self.stepwise:
             a = self.W[:,:,:L_out,:I]
         else:
             a = self.W[:,:,L_out-1,:I]

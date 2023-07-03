@@ -8,7 +8,7 @@ from . import register_model
 from deept.util.timer import Timer
 from deept.util.debug import my_print
 from deept.model.model import MTModel
-from deept.util.globals import Globals
+from deept.util.globals import Settings
 from deept.model.state import DynamicState
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
@@ -591,14 +591,14 @@ class PositionBasedAttention(nn.Module):
         if posnet_type == 'aPosNet' or posnet_type == 'arPosNet':
             self.W_q1 = nn.Linear(D, D)
             self.W_k  = nn.Linear(D, D)
-            if not Globals.is_training() and self.pre_calculate_matrices:
+            if not Settings.is_training() and self.pre_calculate_matrices:
                 self.Wa = nn.Parameter(torch.ones(1, H, maxI, maxI), requires_grad=True)
 
         if posnet_type == 'rPosNet' or posnet_type == 'arPosNet':
             self.W_q2 = nn.Linear(D, D)
             self.rel_embed = nn.Embedding(2*K+1, D)
             self.register_buffer('rng', torch.arange(2*K+1))
-            if not Globals.is_training() and self.pre_calculate_matrices:
+            if not Settings.is_training() and self.pre_calculate_matrices:
                 self.Wr = nn.Parameter(torch.ones(1, H, maxI, 2*K+1), requires_grad=True)
 
         if gating_v == 'glu':
@@ -618,7 +618,7 @@ class PositionBasedAttention(nn.Module):
 
     def __precalculate_indices(self, K, H, maxI, length_ratio):
 
-        arangeI = torch.arange(maxI).to(Globals.get_device())
+        arangeI = torch.arange(maxI).to(Settings.get_device())
         indices = arangeI.unsqueeze(0)
         indices = indices.repeat(maxI, 1)
         indices = indices - torch.floor(length_ratio * arangeI.to(torch.float).unsqueeze(1))
@@ -707,7 +707,7 @@ class PositionBasedAttention(nn.Module):
 
     def __get_aPosNet_matrix(self, q_in, k, i_scalar, I, J):
 
-        if not Globals.is_training() and self.pre_calculate_matrices:
+        if not Settings.is_training() and self.pre_calculate_matrices:
             if self.stepwise:
                 aa = self.Wa[:,:,i_scalar-1,:J].unsqueeze(-2)
             else:
@@ -719,7 +719,7 @@ class PositionBasedAttention(nn.Module):
 
     def __get_rPosNet_matrix(self, q_in, i_scalar, B, I, J):
 
-        if not Globals.is_training() and self.pre_calculate_matrices:
+        if not Settings.is_training() and self.pre_calculate_matrices:
             if self.stepwise:
                 ar = self.Wr[:,:,i_scalar-1,:].unsqueeze(-2)
             else:
@@ -727,12 +727,12 @@ class PositionBasedAttention(nn.Module):
         else:
             ar = self._calculate_rposnet_matrix(q_in)
 
-        if not Globals.is_training() and self.stepwise:
+        if not Settings.is_training() and self.stepwise:
             indices = self.indices[:,:,i_scalar-1,:J].unsqueeze(-2)
         else:
             indices = self.indices[:,:,:I,:J]
 
-        if Globals.is_training():
+        if Settings.is_training():
             indices = indices.repeat(B, self.H, 1, 1)
         else:
             indices = indices.repeat(1, self.H, 1, 1)
@@ -777,7 +777,7 @@ class PositionBasedAttention(nn.Module):
         return r
 
     def __check_matrix_shape(self, a, B, I, J):
-        if Globals.is_training():
+        if Settings.is_training():
             dim0 = B
             dim2 = I
         else:

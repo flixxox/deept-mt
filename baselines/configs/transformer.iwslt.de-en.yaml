@@ -29,6 +29,7 @@ threaded_data_loading:  False
 batch_size:             2048  # [target tokens without padding] [1024,2048]
 batch_size_search:      512   # [target tokens without padding]
 max_sentence_length:    128
+update_freq:            8
 
 checkpoints:                  True
 checkpoint_unit:              'Step'  # ['Step', 'Epoch']
@@ -60,10 +61,10 @@ variance_scaling_scale:   0.78
 score:            'LabelSmoothingCrossEntropy'
 label_smoothing:  0.1
 
-optimizer:    'WarmupAdam'
-warmup:       4000
-lr_scale:     2.0
-update_freq:  8
+optimizer:        'Adam'
+lr_scheduler:     'Warmup'
+warmup_steps:     4000
+warmup_lr_scale:  2.0
 
 search_algorithm:   'Beam'
 beam_size:          12

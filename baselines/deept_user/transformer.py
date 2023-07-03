@@ -4,11 +4,13 @@ import torch
 import torch.nn as nn
 from numpy import dtype
 
-from . import register_model
 from deept.util.timer import Timer
 from deept.util.debug import my_print
-from deept.model.model import MTModel
 from deept.model.state import DynamicState
+from deept.model.model import (
+    MTModel,
+    register_model
+)
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
     PositionalEmbedding,
@@ -35,7 +37,7 @@ class Transformer(MTModel):
             self.decoder.output_projection.object_to_time.weight = self.encoder.src_embed.object_to_time.word_embed.weight
 
     @staticmethod
-    def create_model_from_config(config, vocab_src, vocab_tgt):
+    def create_from_config(config, vocab_src, vocab_tgt):
         
         model =  Transformer(
             pad_index = vocab_src.PAD,
@@ -81,11 +83,11 @@ class Transformer(MTModel):
 
         return s, enc_matrices
 
-    def create_masks(self, src, tgt, pad_index):
+    def create_masks(self, src, tgt):
 
         masks = {}
 
-        src_mask = (src == pad_index)
+        src_mask = (src == self.pad_index)
         src_mask = src_mask.unsqueeze(1).unsqueeze(2)
         masks['src_mask'] = src_mask
 
@@ -99,7 +101,7 @@ class Transformer(MTModel):
 
             masks['tgt_mask'] = tgt_mask
 
-        out_mask = (tgt != pad_index)
+        out_mask = (tgt != self.pad_index)
 
         return masks, out_mask
 

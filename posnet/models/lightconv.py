@@ -7,7 +7,7 @@ from . import register_model
 from deept.util.timer import Timer
 from deept.util.debug import my_print
 from deept.model.model import MTModel
-from deept.util.globals import Globals
+from deept.util.globals import Settings
 from deept.model.state import DynamicState
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
@@ -471,7 +471,7 @@ class LightConvLayer(nn.Module):
             g = g.view(B, -1, H, Dh)
             g = self.transpose(g, 1, 2)
 
-        if not Globals.is_training() and self.stepwise:
+        if not Settings.is_training() and self.stepwise:
             assert i_scalar is not None
             indices = self.indices[:,:,i_scalar-1,:I].unsqueeze(-2)
             if not self.global_context:

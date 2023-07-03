@@ -7,7 +7,7 @@ from . import register_model
 from deept.util.timer import Timer
 from deept.model.model import MTModel
 from deept.util.debug import my_print
-from deept.util.globals import Globals
+from deept.util.globals import Settings
 from deept.model.state import DynamicState
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
@@ -65,7 +65,7 @@ class FNet(MTModel):
 
         I_act = I_act.unsqueeze(1).unsqueeze(1)
 
-        W_a = (torch.arange(I).unsqueeze(-1) * torch.arange(I).unsqueeze(0)).to(Globals.get_device())
+        W_a = (torch.arange(I).unsqueeze(-1) * torch.arange(I).unsqueeze(0)).to(Settings.get_device())
 
         W_a = W_a.unsqueeze(0).repeat(B, 1, 1) / I_act
 
@@ -171,7 +171,7 @@ class FNetDecoder(nn.Module):
         J_act = (src_mask == False).to(torch.float).sum(-1).squeeze().view(B)
         I_act = (J_act * self.sentence_length_factor).to(torch.int)
 
-        if Globals.is_training() or not self.stepwise:
+        if Settings.is_training() or not self.stepwise:
             W_decoder_dft = FNet.calculate_dft_matrix(B, I, I_act)
         else:
             W_decoder_dft = FNet.calculate_dft_matrix(B, torch.clamp(torch.max(I_act), min=i), I_act)
@@ -307,7 +307,7 @@ class FNetAttentionLayer(nn.Module):
 
         v = self.W_v(v)
 
-        if Globals.is_training() or not self.stepwise:
+        if Settings.is_training() or not self.stepwise:
             a = W_dft[:,:L_out,:]
         else:
             a = W_dft[:,L_out-1,:L_in]
