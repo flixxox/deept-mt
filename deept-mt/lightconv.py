@@ -1,4 +1,3 @@
-import math
 
 import torch
 import torch.nn as nn
@@ -6,6 +5,8 @@ from numpy import dtype
 
 from deept.util.timer import Timer
 from deept.util.debug import my_print
+from deept.model.model import MTModel
+from deept.util.globals import Settings
 from deept.model.state import DynamicState
 from deept.model.model import (
     MTModel,
@@ -20,8 +21,8 @@ from deept.model.modules import (
     MatMul
 )
 
-@register_model("Transformer")
-class Transformer(MTModel):
+@register_model("LightConv")
+class LightConv(MTModel):
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -29,17 +30,17 @@ class Transformer(MTModel):
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-        self.encoder = TransformerEncoder(**kwargs)
-        self.decoder = TransformerDecoder(**kwargs)
+        self.encoder = LightConvEncoder(**kwargs)
+        self.decoder = LightConvDecoder(**kwargs)
 
         if self.tiew:
             self.decoder.tgt_embed.object_to_time.word_embed.weight = self.encoder.src_embed.object_to_time.word_embed.weight
             self.decoder.output_projection.object_to_time.weight = self.encoder.src_embed.object_to_time.word_embed.weight
 
     @staticmethod
-    def create_from_config(config, vocab_src, vocab_tgt):
+    def create_model_from_config(config, vocab_src, vocab_tgt):
         
-        model =  Transformer(
+        model =  LightConv(
             pad_index = vocab_src.PAD,
             srcV = vocab_src.vocab_size,
             tgtV = vocab_tgt.vocab_size,
@@ -54,8 +55,16 @@ class Transformer(MTModel):
             initializer = config['initializer'],
             variance_scaling_scale = config['variance_scaling_scale'],
             stepwise = config['stepwise'],
-            use_sinusodial_pos_embed = config['use_sinusodial_pos_embed', False],
-            gating = config['gating', False],
+            use_sinusodial_pos_embed = config['use_sinusodial_pos_embed', True],
+            use_pos_embed = config['use_pos_embed', True],
+            K = config['K'],
+            K_per_layer = config['K_per_layer', False],
+            Ks = config['Ks', []],
+            gating_v = config['gating_v'],
+            gating_g = config['gating_g'],
+            normalize_v = config['normalize_v'],
+            normalize_g = config['normalize_g'],
+            global_context = config['global_context', False]
         )
 
         return model
@@ -83,11 +92,11 @@ class Transformer(MTModel):
 
         return s, enc_matrices
 
-    def create_masks(self, src, tgt):
+    def create_masks(self, src, tgt, pad_index):
 
         masks = {}
 
-        src_mask = (src == self.pad_index)
+        src_mask = (src == pad_index)
         src_mask = src_mask.unsqueeze(1).unsqueeze(2)
         masks['src_mask'] = src_mask
 
@@ -101,12 +110,12 @@ class Transformer(MTModel):
 
             masks['tgt_mask'] = tgt_mask
 
-        out_mask = (tgt != self.pad_index)
+        out_mask = (tgt != pad_index)
 
         return masks, out_mask
 
 
-class TransformerEncoder(nn.Module):
+class LightConvEncoder(nn.Module):
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -119,7 +128,18 @@ class TransformerEncoder(nn.Module):
         else:
             self.src_embed = Timer(PositionalEmbedding(self.srcV, self.model_dim, self.maxI, self.dropout, self.pad_index))
         
-        self.layers = nn.ModuleList([TransformerEncoderLayer(**kwargs) for n in range(self.encL)])
+        if self.K_per_layer:
+
+            import copy
+            args_per_layer = []
+            for l in range(self.encL):
+                args = copy.deepcopy(kwargs)
+                args['K'] = kwargs['Ks'][l]
+                args_per_layer.append(args)
+
+            self.layers = nn.ModuleList([LightConvEncoderLayer(**args_per_layer[l]) for l in range(self.encL)])
+        else:
+            self.layers = nn.ModuleList([LightConvEncoderLayer(**kwargs) for l in range(self.encL)])
 
         self.lnorm = Timer(LayerNormalization(self.model_dim))
 
@@ -154,7 +174,7 @@ class TransformerEncoder(nn.Module):
         return h, matrices
 
 
-class TransformerDecoder(nn.Module):
+class LightConvDecoder(nn.Module):
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -167,7 +187,17 @@ class TransformerDecoder(nn.Module):
         else:
             self.tgt_embed = Timer(PositionalEmbedding(self.tgtV, self.model_dim, self.maxI, self.dropout, self.pad_index))
 
-        self.layers = nn.ModuleList([TransformerDecoderLayer(**kwargs) for n in range(self.decL)])
+        if self.K_per_layer:
+            import copy
+            args_per_layer = []
+            for l in range(self.decL):
+                args = copy.deepcopy(kwargs)
+                args['K'] = kwargs['Ks'][l]
+                args_per_layer.append(args)
+
+            self.layers = nn.ModuleList([LightConvDecoderLayer(**args_per_layer[l]) for l in range(self.decL)])
+        else:
+            self.layers = nn.ModuleList([LightConvDecoderLayer(**kwargs) for l in range(self.decL)])
 
         self.lnorm              = Timer(LayerNormalization(self.model_dim))
         self.output_projection  = Timer(nn.Linear(self.model_dim, self.tgtV))
@@ -179,7 +209,7 @@ class TransformerDecoder(nn.Module):
 
         for layer in self.layers:
 
-            s, _, _ = layer(s, h, src_mask=src_mask, tgt_mask=tgt_mask)
+            s, _, _ = layer(s, h, i_scalar=i, src_mask=src_mask, tgt_mask=tgt_mask)
 
         s = self.lnorm(s)
         s = self.output_projection(s)
@@ -195,7 +225,7 @@ class TransformerDecoder(nn.Module):
 
         for l, layer in enumerate(self.layers):
 
-            s, b, c = layer(s, h, src_mask=src_mask, tgt_mask=tgt_mask)
+            s, b, c = layer(s, h, i_scalar=i, src_mask=src_mask, tgt_mask=tgt_mask)
 
             matrices[f'decoder/layer{l}/self_att'] = {
                 'value': b
@@ -212,7 +242,7 @@ class TransformerDecoder(nn.Module):
         return s, matrices
 
 
-class TransformerEncoderLayer(nn.Module):
+class LightConvEncoderLayer(nn.Module):
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -220,12 +250,16 @@ class TransformerEncoderLayer(nn.Module):
         for k, v in kwargs.items():
             setattr(self, k, v)
         
-        self.lnorm1 = Timer(LayerNormalization(self.model_dim))
-        self.att = GatedMultiHeadAttention(
-            self.nHeads, self.model_dim, self.dropout,
-            gating=self.gating
+        self.lnorm1     = Timer(LayerNormalization(self.model_dim))
+        self.att        = LightConvLayer(
+            self.nHeads, self.model_dim, self.K, self.dropout, self.maxI,
+            gating_v=self.gating_v,
+            gating_g=self.gating_g,
+            normalize_v=self.normalize_v,
+            normalize_g=self.normalize_g,
+            global_context=self.global_context
         )
-        self.dropout = Timer(nn.Dropout(self.dropout))
+        self.dropout    = Timer(nn.Dropout(self.dropout))
 
         self.lnorm2     = Timer(LayerNormalization(self.model_dim))
         self.ff1        = Timer(nn.Linear(self.model_dim, self.ff_dim))
@@ -236,7 +270,7 @@ class TransformerEncoderLayer(nn.Module):
         
         r = x
         x = self.lnorm1(x)
-        x, a = self.att(x, x, x, x, m=src_mask)
+        x, a = self.att(x, x, m=src_mask)
         x = self.dropout(x)
         x = x + r
 
@@ -251,7 +285,7 @@ class TransformerEncoderLayer(nn.Module):
         return x, a
 
 
-class TransformerDecoderLayer(nn.Module):
+class LightConvDecoderLayer(nn.Module):
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -259,10 +293,14 @@ class TransformerDecoderLayer(nn.Module):
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-        self.lnorm1 = Timer(LayerNormalization(self.model_dim))
-        self.self_att = GatedMultiHeadAttention(
-            self.nHeads, self.model_dim, self.dropout,
-            gating=self.gating
+        self.lnorm1         = Timer(LayerNormalization(self.model_dim))
+        self.self_att       = LightConvLayer(
+            self.nHeads, self.model_dim, self.K, self.dropout, self.maxI, stepwise=self.stepwise,
+            gating_v=self.gating_v,
+            gating_g=self.gating_g,
+            normalize_v=self.normalize_v,
+            normalize_g=self.normalize_g,
+            global_context=self.global_context
         )
         self.self_att_state = DynamicState(time_dim=1, stepwise=self.stepwise)
 
@@ -275,12 +313,12 @@ class TransformerDecoderLayer(nn.Module):
         self.ff2        = Timer(nn.Linear(self.ff_dim, self.model_dim))
         self.dropout    = Timer(nn.Dropout(self.dropout))
 
-    def __call__(self, s, h, src_mask=None, tgt_mask=None):
+    def __call__(self, s, h, i_scalar=None, src_mask=None, tgt_mask=None):
 
         r = s
         s = self.lnorm1(s)
         s_full = self.self_att_state.full(s)
-        s, b = self.self_att(s, s_full, s_full, s, m=tgt_mask)
+        s, b = self.self_att(s_full, s, i_scalar=i_scalar, m=tgt_mask)
         s = self.dropout(s)
         s = s + r
 
@@ -301,65 +339,125 @@ class TransformerDecoderLayer(nn.Module):
         return s, b, c
 
 
-class GatedMultiHeadAttention(nn.Module):
+class LightConvLayer(nn.Module):
 
     def __init__(self,
-        H, D, dropout,
-        gating=False,
+        H, D, K, dropout, maxI,
+        stepwise=False,
+        gating_v='gelu',
+        gating_g='gelu',
+        normalize_v=True,
+        normalize_g=False,
+        global_context=False
     ):
         super().__init__()
 
         self.H = H
         self.D = D
         self.Dh = D // H
-        
-        self.gating = gating
+        self.K = K
 
-        self.__create_learnable_parameters(D, gating)
-        self.__create_normalizations(D, gating)
-        self.__create_activations(gating)
+        self.stepwise = stepwise
+        self.gating_v = gating_v
+        self.gating_g = gating_g
+        self.normalize_v = normalize_v
+        self.normalize_g = normalize_g
+        self.global_context = global_context
 
-        self.matmul = Timer(MatMul())
+        self.__create_gating_activations(gating_v, gating_g)
+        self.__create_normalizations(gating_v, normalize_v, gating_g, normalize_g)
+        self.__create_learnable_parameters(H, D, K, gating_v, gating_g)
+
         self.transpose = Timer(Transpose())
         self.softmax = Timer(nn.Softmax(-1))
         self.dropout = Timer(nn.Dropout(dropout))
+        self.matmul = Timer(MatMul())
 
-    def __create_learnable_parameters(self, D, gating):
+        self.__precalculate_indices_and_mask(K, H, maxI)
 
-        self.W_q = Timer(nn.Linear(D, D))
-        self.W_k = Timer(nn.Linear(D, D))
-        self.W_o = Timer(nn.Linear(D, D))
-        self.W_v = Timer(nn.Linear(D, D))
+    def __create_gating_activations(self, gating_v, gating_g):
 
-        if gating:
-            self.W_g = Timer(nn.Linear(D, D))
+        if gating_v == 'glu':
+            self.act_v = nn.GLU()
+        elif gating_v == 'gelu':
+            self.act_v = nn.GELU()
+        elif gating_v == 'none':
+            self.act_v = nn.Identity()
         else:
-            self.W_g = nn.Identity()
-    
-    def __create_normalizations(self, D, gating):
-        if gating:
+            raise ValueError(f'Unrecognized value for gating_v {gating_v}')
+
+        if gating_g == 'glu':
+            self.act_g = nn.GLU()
+        elif gating_g == 'gelu':
+            self.act_g = nn.GELU()
+        elif gating_g == 'sigmoid':
+            self.act_g = nn.Sigmoid()
+        elif gating_g == 'none':
+            self.act_g = nn.Identity()
+        else:
+            raise ValueError(f'Unrecognized value for gating_g {gating_g}')
+
+    def __create_normalizations(self, gating_v, normalize_v, gating_g, normalize_g):
+
+        if gating_v != 'none' and normalize_v:
             self.lnorm_v = Timer(LayerNormalization(self.D))
         else:
             self.lnorm_v = nn.Identity()
 
-    def __create_activations(self, gating):
-        if gating:
-            self.act_v = nn.GELU()
-            self.act_g = nn.GELU()
+        if gating_g != 'none' and normalize_g:
+            self.lnorm_g = Timer(LayerNormalization(self.D))
         else:
-            self.act_v = nn.Identity()
-            self.act_g = nn.Identity()
+            self.lnorm_g = nn.Identity()
 
-    def __call__(self, q, k, v, g, m=None):
+    def __create_learnable_parameters(self, H, D, K, gating_v, gating_g):
+
+        if gating_v == 'glu':
+            self.W_v = Timer(nn.Linear(D, 2*D))
+        else:
+            self.W_v = Timer(nn.Linear(D, D))
+
+        if gating_g != 'none':
+            if gating_g == 'glu':
+                self.W_g = Timer(nn.Linear(D, 2*D))
+            else:
+                self.W_g = Timer(nn.Linear(D, D))
+        else:
+            self.W_g = nn.Identity()
         
-        B = q.shape[0]
+        self.W_o = Timer(nn.Linear(D, D))
+
+        self.W = nn.Parameter(torch.ones(H, (2*K+1)), requires_grad=True)
+
+    def __precalculate_indices_and_mask(self, K, H, maxI):
+
+        arangeI = torch.arange(maxI)
+        indices = arangeI.unsqueeze(0)
+        indices = indices.repeat(maxI, 1)
+        indices = indices - arangeI.unsqueeze(1)
+        indices = torch.clamp(indices, max=K, min=-K)
+        indices += K
+        indices = indices.unsqueeze(0).unsqueeze(0)
+        indices = indices.repeat(1, H, 1, 1)
+
+        gather_m = torch.zeros(1,1,maxI,maxI).to(torch.int)
+        for i in range(maxI):
+            l = max(0, i-K)
+            r = min(i+K+1, maxI)
+            gather_m[:,:,i,:l] = 1
+            gather_m[:,:,i,r:] = 1
+
+        self.register_buffer('indices', indices)
+        self.register_buffer('gather_m', gather_m.to(torch.bool))
+
+    def __call__(self, v, g, i_scalar=None, m=None):
+
+        B = v.shape[0]
+        I = v.shape[1]
         H = self.H
+        K = self.K
         D = self.D
         Dh = self.Dh
-
-        q = self.W_q(q)
-        k = self.W_k(k)
-
+        
         v = self.W_v(v)
         g = self.W_g(g)
 
@@ -367,33 +465,41 @@ class GatedMultiHeadAttention(nn.Module):
         g = self.act_g(g)
 
         v = self.lnorm_v(v)
+        g = self.lnorm_g(g)
 
-        q = q.view(B, -1, H, Dh)
-        k = k.view(B, -1, H, Dh)
         v = v.view(B, -1, H, Dh)
-
-        q = self.transpose(q, 1, 2)
-        k = self.transpose(k, 1, 2)
         v = self.transpose(v, 1, 2)
 
-        if self.gating:
+        if self.gating_g:
             g = g.view(B, -1, H, Dh)
             g = self.transpose(g, 1, 2)
 
-        k = self.transpose(k, -2, -1)
+        if not Settings.is_training() and self.stepwise:
+            assert i_scalar is not None
+            indices = self.indices[:,:,i_scalar-1,:I].unsqueeze(-2)
+            if not self.global_context:
+                gather_m = self.gather_m[:,:,i_scalar-1,:I].unsqueeze(-2)
+        else:
+            indices = self.indices[:,:,:I,:I]
+            if not self.global_context:
+                gather_m = self.gather_m[:,:,:I,:I]
+            
+        a = self.W.unsqueeze(1).unsqueeze(0)
+        a = a.repeat(1, 1, I, 1)
+        a = torch.gather(a, -1, indices)
 
-        a = self.matmul(q, k)
-        a = a / math.sqrt(Dh)
+        if not self.global_context:
+            a = a.masked_fill(gather_m, -1e15)
 
         if m is not None:
-            a = a.masked_fill(m, -float('inf'))
+            a = a.masked_fill(m, -1e15)
 
         a = self.softmax(a)
         a = self.dropout(a)
 
         o = self.matmul(a, v)
 
-        if self.gating:
+        if self.gating_g != 'none':
             o = o * g
 
         o = self.transpose(o, 1, 2)

@@ -4,12 +4,15 @@ import torch
 import torch.nn as nn
 from numpy import dtype
 
-from . import register_model
 from deept.util.timer import Timer
 from deept.util.debug import my_print
 from deept.model.model import MTModel
 from deept.util.globals import Settings
 from deept.model.state import DynamicState
+from deept.model.model import (
+    MTModel,
+    register_model
+)
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
     PositionalEmbedding,
