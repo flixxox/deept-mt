@@ -6,11 +6,9 @@ from numpy import dtype
 
 from deept.util.timer import Timer
 from deept.util.debug import my_print
+from deept.util.globals import Context
 from deept.model.state import DynamicState
-from deept.model.model import (
-    MTModel,
-    register_model
-)
+from deept.model.model import register_model
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
     PositionalEmbedding,
@@ -21,7 +19,7 @@ from deept.model.modules import (
 )
 
 @register_model("Transformer")
-class Transformer(MTModel):
+class Transformer(nn.Module):
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -37,19 +35,20 @@ class Transformer(MTModel):
             self.decoder.output_projection.object_to_time.weight = self.encoder.src_embed.object_to_time.word_embed.weight
 
     @staticmethod
-    def create_from_config(config, vocab_src, vocab_tgt):
+    def create_from_config(config):
         
         model =  Transformer(
-            pad_index = vocab_src.PAD,
-            srcV = vocab_src.vocab_size,
-            tgtV = vocab_tgt.vocab_size,
+            pad_index = Context['vocab_src'].PAD,
+            srcV = Context['vocab_src'].vocab_size,
+            tgtV = Context['vocab_tgt'].vocab_size,
+            input_keys = config['model_input'],
             encL = config['encL'],
             decL = config['decL'],
             model_dim = config['model_dim'],
             nHeads = config['nHeads'],
             ff_dim = config['ff_dim'],
             dropout = config['dropout'],
-            maxI = config['max_sentence_length'],
+            maxI = config['max_sample_size'],
             tiew = config['tiew'],
             initializer = config['initializer'],
             variance_scaling_scale = config['variance_scaling_scale'],
@@ -65,7 +64,9 @@ class Transformer(MTModel):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
     
-    def __call__(self, src, tgt, src_mask=None, tgt_mask=None):
+    def __call__(self, src, tgt):
+
+        src_mask, tgt_mask = self.create_masks(src, tgt)
         
         h = self.encoder(src, src_mask=src_mask, tgt_mask=tgt_mask)
 
@@ -75,25 +76,17 @@ class Transformer(MTModel):
 
     def create_masks(self, src, tgt):
 
-        masks = {}
-
         src_mask = (src == self.pad_index)
         src_mask = src_mask.unsqueeze(1).unsqueeze(2)
-        masks['src_mask'] = src_mask
 
         if tgt is not None:
 
             tgtT = tgt.shape[1]
-
             tgt_mask = torch.tril(tgt.new_ones((tgtT, tgtT)))
             tgt_mask = tgt_mask.unsqueeze(0).unsqueeze(1)  # B, H, I, I
             tgt_mask = (tgt_mask == 0)
 
-            masks['tgt_mask'] = tgt_mask
-
-        out_mask = (tgt != self.pad_index)
-
-        return masks, out_mask
+        return src_mask, tgt_mask
 
 
 class TransformerEncoder(nn.Module):

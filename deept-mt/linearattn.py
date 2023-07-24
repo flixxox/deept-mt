@@ -2,13 +2,9 @@ import torch
 import torch.nn as nn
 
 from deept.util.timer import Timer
-from deept.model.model import MTModel
 from deept.util.globals import Settings
 from deept.model.state import DynamicState
-from deept.model.model import (
-    MTModel,
-    register_model
-)
+from deept.model.model import register_model
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
     PositionalEmbedding,
@@ -18,7 +14,7 @@ from deept.model.modules import (
 )
 
 @register_model("LinearAttn")
-class LinearAttn(MTModel):
+class LinearAttn(nn.Module):
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -46,7 +42,7 @@ class LinearAttn(MTModel):
             nHeads = config['nHeads'],
             ff_dim = config['ff_dim'],
             dropout = config['dropout'],
-            maxI = config['max_sentence_length'],
+            maxI = config['max_sample_size'],
             tiew = config['tiew'],
             initializer = config['initializer'],
             variance_scaling_scale = config['variance_scaling_scale'],

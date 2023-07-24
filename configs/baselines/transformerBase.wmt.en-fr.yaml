@@ -4,19 +4,19 @@ qsub_time_train:  '168:00:00'
 qsub_mem_search:  '16G'
 qsub_time_search: '48:00:00'
 
-train_src:  "/home/fschmidt/data/wmt14/en-fr/train.en"
-train_tgt:  "/home/fschmidt/data/wmt14/en-fr/train.fr"
+data_train_root:  '/home/fschmidt/data/iwslt/de-en/webdataset'
+data_train_mask:  'train.tar'
 
-dev_src:    "/home/fschmidt/data/wmt14/en-fr/valid.en"
-dev_tgt:    "/home/fschmidt/data/wmt14/en-fr/valid.fr"
-dev_ref:    "/home/fschmidt/data/wmt14/en-fr/ref/valid.fr"
+data_dev_root:    '/home/fschmidt/data/iwslt/de-en/webdataset'
+data_dev_mask:    'dev.tar'
 
-test_src:   "/home/fschmidt/data/wmt14/en-fr/test.en"
-test_tgt:   "/home/fschmidt/data/wmt14/en-fr/test.fr"
-test_ref:   "/home/fschmidt/data/wmt14/en-fr/ref/test.fr"
+vocab_src:  "/home/fschmidt/data/iwslt/de-en/source.vocab.pkl"
+vocab_tgt:  "/home/fschmidt/data/iwslt/de-en/target.vocab.pkl"
 
-vocab_src:  "/home/fschmidt/data/wmt14/en-fr/source.vocab.pkl"
-vocab_tgt:  "/home/fschmidt/data/wmt14/en-fr/target.vocab.pkl"
+data_decoding:      'text'
+data_preprocess:    'mt_preprocess'
+data_collate:       'mt_collate'
+data_len_fn:        'mt_len_fn'
 
 number_of_gpus:   2
 seed:             80420
