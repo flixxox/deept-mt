@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 from numpy import dtype
 
-from deept.util.timer import Timer
 from deept.util.debug import my_print
 from deept.util.globals import Settings
 from deept.model.state import DynamicState
@@ -13,9 +12,7 @@ from deept.model.modules import (
     SinusodialPositionalEmbedding,
     PositionalEmbedding,
     MultiHeadAttention,
-    LayerNormalization,
-    Transpose,
-    MatMul
+    LayerNormalization
 )
 
 @register_model("PosNet")
