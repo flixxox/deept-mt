@@ -21,6 +21,7 @@ class MTBeamSearch:
 
         fin_V_mask = torch.arange(self.V) == self.EOS
         self.fin_V_mask = fin_V_mask.view(1, 1, self.V)
+        self.length_penalty_denom = 6 ** self.alpha
 
     @staticmethod
     def create_from_config(config):
@@ -38,7 +39,9 @@ class MTBeamSearch:
             D = config['model_dim'],
             maxI = config['max_sample_size'],
             beam_size = config['beam_size'],
-            length_norm = config['length_norm'],
+            length_norm = config['length_norm', True],
+            use_penalty = (config['length_penalty', 0.] > 0.),
+            alpha = config['length_penalty', 0.],
             stepwise = config['stepwise', False]
         )
     
@@ -227,7 +230,11 @@ class MTBeamSearch:
 
     def apply_length_norm(self, output, i):
         if self.length_norm:
-            return output / i
+            if self.use_penalty:
+                denom = (5 + i) ** self.alpha / self.length_penalty_denom
+                return output / denom
+            else:
+                return output / i
         else:
             return output
 
@@ -301,7 +308,11 @@ class MTBeamSearch:
 
     def remove_length_norm(self, output, i):
         if self.length_norm:
-            return output * i
+            if self.use_penalty:
+                denom = (5 + i) ** self.alpha / self.length_penalty_denom
+                return output * denom
+            else:
+                return output * i
         else:
             return output
 

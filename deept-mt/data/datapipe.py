@@ -4,8 +4,8 @@ import torch
 from torchdata.datapipes.iter import IterDataPipe
 
 from deept.util.debug import my_print
-from deept.util.globals import Context
 from deept.data.datapipe import register_len_fn
+from deept.util.globals import Context, Settings
 from deept.data.datapipe import register_dp_collate
 from deept.data.datapipe import register_dp_decoding
 from deept.data.datapipe import register_dp_preprocessing
@@ -13,7 +13,10 @@ from deept.data.datapipe import register_dp_preprocessing
 
 @register_len_fn('mt_tgt_len_fn')
 def mt_length_function(item):
-    return len(item['tgt'])+1
+    if Settings.is_training():
+        return len(item['tgt'])+1
+    else:
+        return len(item['src'])+2
 
 
 @register_dp_decoding('text')

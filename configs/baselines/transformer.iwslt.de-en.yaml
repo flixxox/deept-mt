@@ -24,16 +24,18 @@ data_len_fn:        'mt_tgt_len_fn'
 postprocessing_fn:  'mt_postprocess'
 
 search_test_set:          False
-batch_size:               2048  # [target tokens without padding]
-batch_size_search:        2048   # [target tokens without padding]
+batch_size:               2048    # [target tokens without padding]
+batch_size_search:        100       # [num sentences]
 update_freq:              8
 min_sample_size:          3
 max_sample_size:          128
 
 dataloader_workers:                   4
-buffer_size_bucketing:                60000
+buffer_size_bucketing:                30000
 buffer_size_batch_shuffling:          2000
 buffer_size_shuffle_before_batching:  180000
+
+buffer_sort_search: 1000
 
 number_of_gpus:   1
 seed:             80420
@@ -74,12 +76,13 @@ label_smoothing:      0.1
 optimizer:        'Adam'
 lr_scheduler:     'Warmup'
 warmup_steps:     4000
-warmup_lr_scale:  2.0
+warmup_lr_scale:  1.0
 
 search_algorithm:   'MTBeamSearch'
 beam_search_input:  ['src']
 beam_size:          12
 length_norm:        True
+length_penalty:     0.6
 stepwise:           True
 
 search_print_per_step_keys: ['src', 'result', out]
