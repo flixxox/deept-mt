@@ -50,8 +50,7 @@ class Transformer(nn.Module):
             initializer = config['initializer'],
             variance_scaling_scale = config['variance_scaling_scale'],
             stepwise = config['stepwise'],
-            use_sinusodial_pos_embed = config['use_sinusodial_pos_embed', False],
-            gating = config['gating', False],
+            use_sinusodial_pos_embed = config['use_sinusodial_pos_embed', False]
         )
 
         return model
@@ -162,10 +161,7 @@ class TransformerEncoderLayer(nn.Module):
             setattr(self, k, v)
         
         self.lnorm1 = LayerNormalization(self.model_dim)
-        self.att = GatedMultiHeadAttention(
-            self.nHeads, self.model_dim, self.dropout,
-            gating=self.gating
-        )
+        self.att = MultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
         self.dropout = nn.Dropout(self.dropout)
 
         self.lnorm2     = LayerNormalization(self.model_dim)
@@ -201,10 +197,7 @@ class TransformerDecoderLayer(nn.Module):
             setattr(self, k, v)
 
         self.lnorm1 = LayerNormalization(self.model_dim)
-        self.self_att = GatedMultiHeadAttention(
-            self.nHeads, self.model_dim, self.dropout,
-            gating=self.gating
-        )
+        self.self_att = MultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
         self.self_att_state = DynamicState(time_dim=1, stepwise=self.stepwise)
 
         self.lnorm2     = LayerNormalization(self.model_dim)
@@ -240,103 +233,3 @@ class TransformerDecoderLayer(nn.Module):
         s = s + r
 
         return s, b, c
-
-
-class GatedMultiHeadAttention(nn.Module):
-
-    def __init__(self,
-        H, D, dropout,
-        gating=False,
-    ):
-        super().__init__()
-
-        self.H = H
-        self.D = D
-        self.Dh = D // H
-        
-        self.gating = gating
-
-        self.__create_learnable_parameters(D, gating)
-        self.__create_normalizations(D, gating)
-        self.__create_activations(gating)
-
-        self.softmax = nn.Softmax(-1)
-        self.dropout = nn.Dropout(dropout)
-
-    def __create_learnable_parameters(self, D, gating):
-
-        self.W_q = nn.Linear(D, D)
-        self.W_k = nn.Linear(D, D)
-        self.W_o = nn.Linear(D, D)
-        self.W_v = nn.Linear(D, D)
-
-        if gating:
-            self.W_g = nn.Linear(D, D)
-        else:
-            self.W_g = nn.Identity()
-    
-    def __create_normalizations(self, D, gating):
-        if gating:
-            self.lnorm_v = LayerNormalization(self.D)
-        else:
-            self.lnorm_v = nn.Identity()
-
-    def __create_activations(self, gating):
-        if gating:
-            self.act_v = nn.GELU()
-            self.act_g = nn.GELU()
-        else:
-            self.act_v = nn.Identity()
-            self.act_g = nn.Identity()
-
-    def __call__(self, q, k, v, g, m=None):
-        
-        B = q.shape[0]
-        H = self.H
-        D = self.D
-        Dh = self.Dh
-
-        q = self.W_q(q)
-        k = self.W_k(k)
-
-        v = self.W_v(v)
-        g = self.W_g(g)
-
-        v = self.act_v(v)
-        g = self.act_g(g)
-
-        v = self.lnorm_v(v)
-
-        q = q.view(B, -1, H, Dh)
-        k = k.view(B, -1, H, Dh)
-        v = v.view(B, -1, H, Dh)
-
-        q = torch.transpose(q, 1, 2)
-        k = torch.transpose(k, 1, 2)
-        v = torch.transpose(v, 1, 2)
-
-        if self.gating:
-            g = g.view(B, -1, H, Dh)
-            g = torch.transpose(g, 1, 2)
-
-        k = torch.transpose(k, -2, -1)
-
-        a = torch.matmul(q, k)
-        a = a / math.sqrt(Dh)
-
-        if m is not None:
-            a = a.masked_fill(m, -float('inf'))
-
-        a = self.softmax(a)
-        a = self.dropout(a)
-
-        o = torch.matmul(a, v)
-
-        if self.gating:
-            o = o * g
-
-        o = torch.transpose(o, 1, 2)
-        o = o.reshape(B, -1, D)
-        o = self.W_o(o)
-
-        return o, a

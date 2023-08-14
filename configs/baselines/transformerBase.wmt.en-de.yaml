@@ -27,11 +27,11 @@ data_len_fn:        'mt_tgt_len_fn'
 postprocessing_fn:  'mt_postprocess'
 
 search_test_set:          True
-batch_size:               1600  # [target tokens without padding]
-batch_size_search:        2048   # [target tokens without padding]
+batch_size:               1700  # [target tokens without padding]
+batch_size_search:        100   # [target tokens without padding]
 update_freq:              16
 min_sample_size:          3
-max_sample_size:          128
+max_sample_size:          150
 
 dataloader_workers:                   4
 buffer_size_bucketing:                60000
@@ -83,7 +83,7 @@ search_algorithm:   'MTBeamSearch'
 beam_search_input:  ['src']
 beam_size:          12
 length_norm:        True
-length_penalty:     0.6
+length_penalty:     0.0
 stepwise:           True
 
 search_print_per_step_keys: ['src', 'result', out]
