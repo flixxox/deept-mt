@@ -4,18 +4,15 @@ import torch
 import torch.nn as nn
 from numpy import dtype
 
-from deept.util.debug import my_print
 from deept.util.globals import Context
 from deept.model.state import DynamicState
 from deept.model.model import register_model
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
-    PositionalEmbedding,
-    MultiHeadAttention,
-    LayerNormalization
+    PositionalEmbedding
 )
 
-@register_model("Transformer")
+@register_model("TorchTransformer")
 class Transformer(nn.Module):
 
     def __init__(self, **kwargs):
@@ -72,15 +69,13 @@ class Transformer(nn.Module):
 
     def create_masks(self, src, tgt):
 
-        src_mask = (src == self.pad_index)
-        src_mask = src_mask.unsqueeze(1).unsqueeze(2)
+        src_mask = (src == self.pad_index).to(torch.bool)
 
         if tgt is not None:
 
             tgtT = tgt.shape[1]
             tgt_mask = torch.tril(tgt.new_ones((tgtT, tgtT)))
-            tgt_mask = tgt_mask.unsqueeze(0).unsqueeze(1)  # B, H, I, I
-            tgt_mask = (tgt_mask == 0)
+            tgt_mask = (tgt_mask == 0).to(torch.bool)
 
             return {'src_mask': src_mask,
                 'tgt_mask': tgt_mask}
@@ -97,13 +92,17 @@ class TransformerEncoder(nn.Module):
             setattr(self, k, v)
 
         if self.use_sinusodial_pos_embed:
-            self.src_embed = SinusodialPositionalEmbedding(self.srcV, self.model_dim, self.maxI, self.dropout, self.pad_index)
+            self.src_embed = SinusodialPositionalEmbedding(
+                self.srcV, self.model_dim, self.maxI, self.dropout, self.pad_index
+            )
         else:
-            self.src_embed = PositionalEmbedding(self.srcV, self.model_dim, self.maxI, self.dropout, self.pad_index)
+            self.src_embed = PositionalEmbedding(
+                self.srcV, self.model_dim, self.maxI, self.dropout, self.pad_index
+            )
         
         self.layers = nn.ModuleList([TransformerEncoderLayer(**kwargs) for n in range(self.encL)])
 
-        self.lnorm = LayerNormalization(self.model_dim)
+        self.lnorm = nn.LayerNorm((self.model_dim))
 
     def __call__(self, src, src_mask=None, tgt_mask=None):
 
@@ -127,15 +126,19 @@ class TransformerDecoder(nn.Module):
             setattr(self, k, v)
 
         if self.use_sinusodial_pos_embed:
-            self.tgt_embed = SinusodialPositionalEmbedding(self.tgtV, self.model_dim, self.maxI, self.dropout, self.pad_index)
+            self.tgt_embed = SinusodialPositionalEmbedding(
+                self.tgtV, self.model_dim, self.maxI, self.dropout, self.pad_index
+            )
         else:
-            self.tgt_embed = PositionalEmbedding(self.tgtV, self.model_dim, self.maxI, self.dropout, self.pad_index)
+            self.tgt_embed = PositionalEmbedding(
+                self.tgtV, self.model_dim, self.maxI, self.dropout, self.pad_index
+            )
 
         self.layers = nn.ModuleList([TransformerDecoderLayer(**kwargs) for n in range(self.decL)])
 
-        self.lnorm              = LayerNormalization(self.model_dim)
-        self.output_projection  = nn.Linear(self.model_dim, self.tgtV)
-        self.log_softmax        = nn.LogSoftmax(dim=-1)
+        self.lnorm = nn.LayerNorm((self.model_dim))
+        self.output_projection = nn.Linear(self.model_dim, self.tgtV)
+        self.log_softmax = nn.LogSoftmax(dim=-1)
 
     def __call__(self, tgt, h, i=None, src_mask=None, tgt_mask=None):
 
@@ -160,20 +163,30 @@ class TransformerEncoderLayer(nn.Module):
         for k, v in kwargs.items():
             setattr(self, k, v)
         
-        self.lnorm1 = LayerNormalization(self.model_dim)
-        self.att = MultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
+        self.lnorm1 = nn.LayerNorm((self.model_dim))
+        self.att = nn.MultiheadAttention(
+            self.model_dim, self.nHeads,
+            dropout=self.dropout,
+            bias=True,
+            add_bias_kv=False,
+            add_zero_attn=False,
+            kdim=None, vdim=None,
+            batch_first=True
+        )
         self.dropout = nn.Dropout(self.dropout)
 
-        self.lnorm2     = LayerNormalization(self.model_dim)
-        self.ff1        = nn.Linear(self.model_dim, self.ff_dim)
-        self.relu       = nn.ReLU()
-        self.ff2        = nn.Linear(self.ff_dim, self.model_dim)
+        self.lnorm2 = nn.LayerNorm((self.model_dim))
+        self.ff1 = nn.Linear(self.model_dim, self.ff_dim)
+        self.relu = nn.ReLU()
+        self.ff2 = nn.Linear(self.ff_dim, self.model_dim)
 
     def __call__(self, x, src_mask=None):
-        
+
         r = x
         x = self.lnorm1(x)
-        x, a = self.att(x, x, x, m=src_mask)
+        x, a = self.att(x, x, x,
+            key_padding_mask=src_mask
+        )
         x = self.dropout(x)
         x = x + r
 
@@ -196,31 +209,52 @@ class TransformerDecoderLayer(nn.Module):
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-        self.lnorm1 = LayerNormalization(self.model_dim)
-        self.self_att = MultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
+        self.lnorm1 = nn.LayerNorm((self.model_dim))
+        self.self_att = nn.MultiheadAttention(
+            self.model_dim, self.nHeads,
+            dropout=self.dropout,
+            bias=True,
+            add_bias_kv=False,
+            add_zero_attn=False,
+            kdim=None, vdim=None,
+            batch_first=True
+        )
         self.self_att_state = DynamicState(time_dim=1, stepwise=self.stepwise)
 
-        self.lnorm2     = LayerNormalization(self.model_dim)
-        self.cross_att  = MultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
+        self.lnorm2 = nn.LayerNorm((self.model_dim))
+        self.cross_att = nn.MultiheadAttention(
+            self.model_dim, self.nHeads,
+            dropout=self.dropout,
+            bias=True,
+            add_bias_kv=False,
+            add_zero_attn=False,
+            kdim=None, vdim=None,
+            batch_first=True
+        )
 
-        self.lnorm3     = LayerNormalization(self.model_dim)
-        self.ff1        = nn.Linear(self.model_dim, self.ff_dim)
-        self.relu       = nn.ReLU()
-        self.ff2        = nn.Linear(self.ff_dim, self.model_dim)
-        self.dropout    = nn.Dropout(self.dropout)
+        self.lnorm3 = nn.LayerNorm((self.model_dim))
+        self.ff1 = nn.Linear(self.model_dim, self.ff_dim)
+        self.relu = nn.ReLU()
+        self.ff2 = nn.Linear(self.ff_dim, self.model_dim)
+        self.dropout = nn.Dropout(self.dropout)
 
     def __call__(self, s, h, src_mask=None, tgt_mask=None):
 
         r = s
         s = self.lnorm1(s)
         s_full = self.self_att_state.full(s)
-        s, b = self.self_att(s, s_full, s_full, m=tgt_mask)
+        s, b = self.self_att(s, s_full, s_full,
+            attn_mask=tgt_mask,
+            is_causal=True
+        )
         s = self.dropout(s)
         s = s + r
 
         r = s
         s = self.lnorm2(s)
-        s, c = self.cross_att(s, h, h, m=src_mask)
+        s, c = self.cross_att(s, h, h,
+            key_padding_mask=src_mask
+        )
         s = self.dropout(s)
         s = s + r
 
