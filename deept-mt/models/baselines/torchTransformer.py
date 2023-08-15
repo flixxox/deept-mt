@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 from numpy import dtype
 
-from deept.util.globals import Context
 from deept.model.state import DynamicState
 from deept.model.model import register_model
+from deept.util.globals import Context, Settings
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
     PositionalEmbedding
@@ -245,7 +245,7 @@ class TransformerDecoderLayer(nn.Module):
         s_full = self.self_att_state.full(s)
         s, b = self.self_att(s, s_full, s_full,
             attn_mask=tgt_mask,
-            is_causal=True
+            is_causal=Settings.is_training()
         )
         s = self.dropout(s)
         s = s + r
