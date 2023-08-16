@@ -2,7 +2,6 @@ import math
 
 import torch
 import torch.nn as nn
-from numpy import dtype
 
 from deept.util.debug import my_print
 from deept.util.globals import Context

@@ -1,5 +1,5 @@
 # Pipeline Arguments
-qsub_mem_train:   '16G'
+qsub_mem_train:   '32G'
 qsub_time_train:  '168:00:00'
 qsub_mem_search:  '8G'
 qsub_time_search: '48:00:00'
@@ -31,16 +31,18 @@ batch_size:               1700  # [target tokens without padding]
 batch_size_search:        100   # [target tokens without padding]
 update_freq:              16
 min_sample_size:          3
-max_sample_size:          150
+max_sample_size:          128
 
 dataloader_workers:                   4
 buffer_size_bucketing:                50000
 buffer_size_batch_shuffling:          1000
-buffer_size_shuffle_before_batching:  200000
+buffer_size_shuffle_before_batching:  150000
 
-number_of_gpus:   2
+number_of_gpus:   1
 seed:             80420
-deterministic:    True
+deterministic:    False
+
+mixed_precision_training: True
 
 checkpoints:                  True
 checkpoint_unit:              'Step' # ['Step', 'Epoch']

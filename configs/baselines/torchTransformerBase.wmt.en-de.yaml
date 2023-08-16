@@ -1,21 +1,24 @@
 # Pipeline Arguments
 qsub_mem_train:   '16G'
-qsub_time_train:  '48:00:00'
+qsub_time_train:  '168:00:00'
 qsub_mem_search:  '8G'
 qsub_time_search: '48:00:00'
 
-data_train_root:  '/home/fschmidt/data/iwslt/de-en/webdataset'
+data_train_root:  '/home/fschmidt/data/wmt14/en-de/webdataset'
 data_train_mask:  'train.tar'
 
-data_dev_root:    '/home/fschmidt/data/iwslt/de-en/webdataset'
+data_dev_root:    '/home/fschmidt/data/wmt14/en-de/webdataset'
 data_dev_mask:    'dev.tar'
-corpus_size_dev:  6750
 
-dev_src_comet:    '/home/fschmidt/data/iwslt/de-en/comet/dev.de.detok' # DeepT workflow
-dev_ref:          '/home/fschmidt/data/iwslt/de-en/ref/dev.en.detok' # DeepT workflow
+data_test_root:    '/home/fschmidt/data/wmt14/en-de/webdataset'
+data_test_mask:    'test.tar'
+corpus_size_test:  3003
 
-vocab_src:        '/home/fschmidt/data/iwslt/de-en/vocabs/source.vocab.pad.pkl'
-vocab_tgt:        '/home/fschmidt/data/iwslt/de-en/vocabs/target.vocab.pad.pkl'
+test_src_comet:    '/home/fschmidt/data/wmt14/en-de/comet/test.en.detok' # DeepT workflow
+test_ref:          '/home/fschmidt/data/wmt14/en-de/ref/test.de.detok' # DeepT workflow
+
+vocab_src:        '/home/fschmidt/data/wmt14/en-de/vocabs/source.vocab.pkl'
+vocab_tgt:        '/home/fschmidt/data/wmt14/en-de/vocabs/target.vocab.pkl'
 
 data_decoding:      'text'
 data_preprocess:    'mt_preprocess'
@@ -23,10 +26,10 @@ data_collate:       'mt_collate'
 data_len_fn:        'mt_tgt_len_fn'
 postprocessing_fn:  'mt_postprocess'
 
-search_test_set:          False
-batch_size:               8192    # [target tokens without padding]
-batch_size_search:        100     # [num sentences]
-update_freq:              2
+search_test_set:          True
+batch_size:               1700  # [target tokens without padding]
+batch_size_search:        100   # [target tokens without padding]
+update_freq:              16
 min_sample_size:          3
 max_sample_size:          128
 
@@ -35,24 +38,22 @@ buffer_size_bucketing:                50000
 buffer_size_batch_shuffling:          1000
 buffer_size_shuffle_before_batching:  150000
 
-mixed_precision_training: True
-
-buffer_sort_search: 1000
-
-number_of_gpus:   1
+number_of_gpus:   2
 seed:             80420
 deterministic:    False
 
-checkpoints:            True
-checkpoint_unit:        'Step'  # ['Step', 'Epoch']
-checkpoint_strategy:    'All'   # ['All', 'Best']
-checkpoint_period:      300
-checkpoint_start_after: 3000
-units_to_train:         30000
+mixed_precision_training: True
+
+checkpoints:                  True
+checkpoint_unit:              'Step' # ['Step', 'Epoch']
+checkpoint_strategy:          'All' # ['All', 'Best']
+checkpoint_period:            1000
+checkpoint_start_after:       10000
+units_to_train:               150000
 
 average_last_after_best_checkpoints:  True
 average_last_checkpoints:             True
-checkpoints_to_average:               30
+checkpoints_to_average:               7
 best_checkpoint_indicator:            'ppl'
 
 model:        'TorchTransformer'
@@ -60,10 +61,13 @@ model_input:  ['src', 'tgt']
 encL:         6
 decL:         6
 model_dim:    512
-ff_dim:       1024
-dropout:      0.3
+ff_dim:       2048
+dropout:      0.1
 nHeads:       8
 tiew:         True
+
+gating:                   False
+use_sinusodial_pos_embed: True
 
 initializer:              'GlorotUniform'
 variance_scaling_scale:   0.78
@@ -75,7 +79,7 @@ label_smoothing:      0.1
 optimizer:        'Adam'
 lr_scheduler:     'Warmup'
 warmup_steps:     4000
-warmup_lr_scale:  2.0
+warmup_lr_scale:  1.0
 
 search_algorithm:   'MTBeamSearch'
 beam_search_input:  ['src']
