@@ -31,15 +31,20 @@ min_sample_size:          3
 max_sample_size:          128
 
 dataloader_workers:                   4
-buffer_size_bucketing:                50000
-buffer_size_batch_shuffling:          1000
-buffer_size_shuffle_before_batching:  150000
+buffer_size_bucketing:                10 # 50000
+buffer_size_batch_shuffling:          10 # 1000
+buffer_size_shuffle_before_batching:  10 # 150000
 
-mixed_precision_training: True
-quantize_post_training:   False
+mixed_precision_training: False
+quantize_post_training:   True
 quantize_backend:         'x86'  # ['x86', 'qnnpack']
+model_uses_qat:           True
 
-model_uses_post_training_quantization: True
+quantized_bits:       8
+activation_quantizer: 'MinMax'
+
+load_weights: True
+load_weights_from: '/nas/models/neurosys/output/baselines/transformer.iwslt.de-en/lr_scale-2/output/checkpoints/ckpt-avg-last.pt'
 
 buffer_sort_search: 1000
 
@@ -59,7 +64,7 @@ average_last_checkpoints:             True
 checkpoints_to_average:               30
 best_checkpoint_indicator:            'ppl'
 
-model:        'Transformer'
+model:        'QuantTransformer'
 model_input:  ['src', 'tgt']
 encL:         6
 decL:         6

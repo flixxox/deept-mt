@@ -4,13 +4,19 @@ import torch
 import torch.nn as nn
 
 from deept.util.debug import my_print
-from deept.util.globals import Context
 from deept.model.state import DynamicState
 from deept.model.model import register_model
+from deept.util.globals import Context, Settings
 from deept.model.modules import (
-    SinusodialPositionalEmbedding,
+    LayerNormalization,
     PositionalEmbedding,
-    LayerNormalization
+    SinusodialPositionalEmbedding
+)
+
+from deept_mt.quantization.quant_utils import create_activation_quantizer
+from deept_mt.quantization.quantized_modules import (
+    QuantizedLinear,
+    QuantizedLinearRelu
 )
 
 @register_model("QuantTransformer")
@@ -48,7 +54,9 @@ class QuantTransformer(nn.Module):
             initializer = config['initializer'],
             variance_scaling_scale = config['variance_scaling_scale'],
             stepwise = config['stepwise'],
-            use_sinusodial_pos_embed = config['use_sinusodial_pos_embed', True]
+            use_sinusodial_pos_embed = config['use_sinusodial_pos_embed', True],
+            bits = config['quantized_bits'],
+            activation_quantizer = config['activation_quantizer'],
         )
 
         return model
@@ -57,6 +65,11 @@ class QuantTransformer(nn.Module):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
+
+    def init_weights_from_checkpoint(self, checkpoint_path):
+        
+        checkpoint = torch.load(checkpoint_path, map_location=Settings.get_device())
+        self.load_state_dict(checkpoint['model'])
     
     def __call__(self, src, tgt):
 
@@ -105,19 +118,13 @@ class TransformerEncoder(nn.Module):
 
     def __call__(self, src, src_mask=None, tgt_mask=None):
 
-        assert is_not_quantized(src)
-
         h = self.src_embed(src)
-
-        h = self.input_quantizer(h)
 
         for layer in self.layers:
 
             h, _ = layer(h, src_mask=src_mask)
 
         h = self.lnorm(h)
-
-        assert is_quantized(h)
 
         return h
 
@@ -168,14 +175,14 @@ class TransformerEncoderLayer(nn.Module):
         self.att = QuantizedMultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
         self.dropout = nn.Dropout(self.dropout)
 
+        self.quant_ff1 = create_activation_quantizer(self.bits, self.activation_quantizer)
+        self.quant_ff2 = create_activation_quantizer(self.bits, self.activation_quantizer)
+
         self.lnorm2 = LayerNormalization(self.model_dim)
-        self.ff1 = nn.Linear(self.model_dim, self.ff_dim)
-        self.relu = nn.ReLU()
-        self.ff2 = nn.Linear(self.ff_dim, self.model_dim)
+        self.ff1 = QuantizedLinearRelu(self.model_dim, self.ff_dim, self.bits)
+        self.ff2 = QuantizedLinear(self.ff_dim, self.model_dim, self.bits)
 
     def __call__(self, x, src_mask=None):
-
-        assert is_quantized(x)
 
         r = x
         x = self.lnorm1(x)
@@ -185,19 +192,12 @@ class TransformerEncoderLayer(nn.Module):
 
         r = x
         x = self.lnorm2(x)
+        x = self.quant_ff1(x)
         x = self.ff1(x)
-        
-        x = torch.dequantize(x)
-        assert is_not_quantized(x)
-        x = self.relu(x)
-        x = self.relu_quantizer.quantize(x)
-        assert is_quantized(x)
-        
+        x = self.quant_ff2(x)
         x = self.ff2(x)
         x = self.dropout(x)
         x = x + r
-
-        assert is_quantized(x)
 
         return x, a
 
@@ -217,10 +217,12 @@ class TransformerDecoderLayer(nn.Module):
         self.lnorm2 = LayerNormalization(self.model_dim)
         self.cross_att = QuantizedMultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
 
+        self.quant_ff1 = create_activation_quantizer(self.bits, self.activation_quantizer)
+        self.quant_ff2 = create_activation_quantizer(self.bits, self.activation_quantizer)
+
         self.lnorm3 = LayerNormalization(self.model_dim)
-        self.ff1 = nn.Linear(self.model_dim, self.ff_dim)
-        self.relu = nn.ReLU()
-        self.ff2 = nn.Linear(self.ff_dim, self.model_dim)
+        self.ff1 = QuantizedLinearRelu(self.model_dim, self.ff_dim, self.bits)
+        self.ff2 = QuantizedLinear(self.ff_dim, self.model_dim, self.bits)
         self.dropout = nn.Dropout(self.dropout)
 
     def __call__(self, s, h, src_mask=None, tgt_mask=None):
@@ -228,9 +230,7 @@ class TransformerDecoderLayer(nn.Module):
         r = s
         s = self.lnorm1(s)
         s_full = self.self_att_state.full(s)
-
         s, b = self.self_att(s, s_full, s_full, m=tgt_mask)
-        
         s = self.dropout(s)
         s = s + r
 
@@ -242,37 +242,14 @@ class TransformerDecoderLayer(nn.Module):
 
         r = s
         s = self.lnorm3(s)
+        s = self.quant_ff1(s)
         s = self.ff1(s)
-        s = self.relu(s)
+        s = self.quant_ff2(s)
         s = self.ff2(s)
         s = self.dropout(s)
         s = s + r
 
         return s, b, c
-
-
-class Quantizer(nn.Module):
-
-    def __init__(self):
-        self.observer = None
-    
-    def quantize(self, x):
-        observer(x)
-        args = self.observer.get_args()
-        return torch.quantize(x, *args)
-
-
-class QuantizedLinear(nn.Module):
-
-    def __init__(self, in_dim, out_dim, bias=True):
-        
-        self.weights = nn.Weights(in_dim, out_dim)
-
-        if bias:
-            self.bias = nn.Weights(out_dim)
-
-    def __call__(self, x, dequantize=False):
-        return x
 
 
 class QuantizedMultiHeadAttention(nn.Module):
@@ -284,10 +261,10 @@ class QuantizedMultiHeadAttention(nn.Module):
         self.D = D
         self.Dh = D // H
         
-        self.W_q = QuantizedLinear(D, D)
-        self.W_k = QuantizedLinear(D, D)
-        self.W_v = QuantizedLinear(D, D)
-        self.W_o = QuantizedLinear(D, D)
+        self.W_q = nn.Linear(D, D)
+        self.W_k = nn.Linear(D, D)
+        self.W_v = nn.Linear(D, D)
+        self.W_o = nn.Linear(D, D)
 
         self.denom = math.sqrt(self.Dh)
 
@@ -303,8 +280,6 @@ class QuantizedMultiHeadAttention(nn.Module):
         k = self.W_k(k)
         v = self.W_v(v)
 
-        assert is_quantized(q), is_quantized(k), is_quantized(v)
-
         q = q.view(B, -1, self.H, self.Dh)
         k = k.view(B, -1, self.H, self.Dh)
         v = v.view(B, -1, self.H, self.Dh)
@@ -318,24 +293,16 @@ class QuantizedMultiHeadAttention(nn.Module):
         a = torch.matmul(q, k)
         a = a / self.denom
 
-        assert is_quantized(a)
-
         if m is not None:
             a = a.masked_fill(m, -float('inf'))
 
         a = self.softmax(a)
         a = self.dropout(a)
 
-        assert is_quantized(a)
-
         o = torch.matmul(a, v)
-
-        assert is_quantized(o)
 
         o = torch.transpose(o, 1, 2)
         o = o.reshape(B, -1, self.D)
         o = self.W_o(o)
-
-        assert is_quantized(o)
 
         return o, a
