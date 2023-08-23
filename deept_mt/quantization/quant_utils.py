@@ -16,15 +16,13 @@ def get_quantization_range_from_bits(bits, dtype):
 
     return quant_min, quant_max
 
+def get_dtype_from_string(dtype_string):
+    if dtype_string == 'quint8':
+        return torch.quint8
+    elif dtype_string == 'qint8':
+        return torch.qint8
+    else:
+        raise ValueError(f'Unrecognized dtype string {dtype_string}!')
+
 def is_quantized(x):
     return x.is_quantized()
-
-def create_activation_quantizer(bits, argument):
-    from deept_mt.quantization.quantizer import (
-        MinMaxFakeActivationQuantizer
-    )
-
-    if argument == 'MinMax':
-        return MinMaxFakeActivationQuantizer(bits, torch.quint8)
-    else:
-        raise ValueError(f'Unrecognized activation quantizer {argument}!')

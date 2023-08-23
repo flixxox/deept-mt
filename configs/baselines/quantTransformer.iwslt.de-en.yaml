@@ -24,32 +24,59 @@ data_len_fn:        'mt_tgt_len_fn'
 postprocessing_fn:  'mt_postprocess'
 
 search_test_set:          False
-batch_size:               2048    # [target tokens without padding]
+batch_size:               1024    # [target tokens without padding]
 batch_size_search:        100     # [num sentences]
-update_freq:              8
+update_freq:              16
 min_sample_size:          3
 max_sample_size:          128
 
 dataloader_workers:                   4
-buffer_size_bucketing:                50000
-buffer_size_batch_shuffling:          1000
-buffer_size_shuffle_before_batching:  150000
+buffer_size_bucketing:                1 # 50000
+buffer_size_batch_shuffling:          1 # 1000
+buffer_size_shuffle_before_batching:  1 # 150000
+
+buffer_sort_search: 1000
+
+# ------ Quantization Params
 
 mixed_precision_training: False
 
 quantize_post_training:   True
-post_training_quant_type: 'manual_calibration'
-
-quantize_backend:         'x86'  # ['x86', 'qnnpack']
-model_uses_qat:           True
-
-quantized_bits:       8
-activation_quantizer: 'MinMax'
+post_training_quant_type: 'calibration'
 
 load_weights: True
 load_weights_from: '/nas/models/neurosys/output/baselines/transformer.iwslt.de-en/lr_scale-2/output/checkpoints/ckpt-avg-last.pt'
 
-buffer_sort_search: 1000
+quantize_backend:         'x86'  # ['x86', 'qnnpack']
+model_uses_qat:           False
+
+# MinMax observer
+weight_quant_dtype:   'quint8' # ['qint8', 'quint8']
+weight_quant_method:  'per_tensor' # ['per_tensor']
+
+# MovingAverageMinMax observer
+activation_quant_dtype:   'quint8' # ['qint8', 'quint8']
+activation_quant_method:  'per_channel' # ['per_tensor', 'per_channel']
+
+# MovingAverageMinMax observer
+dot_quant_dtype:   'quint8' # ['qint8', 'quint8']
+dot_quant_method:  'per_channel' # ['per_tensor', 'per_channel']
+
+# MovingAverageMinMax observer
+Av_quant_dtype:   'quint8' # ['qint8', 'quint8']
+Av_quant_method:  'per_tensor' # ['per_tensor', 'per_channel']
+
+# Remark: bits >= 64 => no quant
+bits_others: 8
+# Bits for attention 
+bits_Wq:    8
+bits_Wk:    8
+bits_Wv:    8
+bits_dot:   8
+bits_Av:    8
+bits_Wo:    8
+
+# ------
 
 number_of_gpus:   1
 seed:             80420

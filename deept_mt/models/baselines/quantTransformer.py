@@ -13,7 +13,12 @@ from deept.model.modules import (
     SinusodialPositionalEmbedding
 )
 
-from deept_mt.quantization.quant_utils import create_activation_quantizer
+
+from deept_mt.quantization.quant_utils import get_dtype_from_string
+from deept_mt.quantization.quantizer import (
+    FakeWeightQuantizer,
+    FakeActivationQuantizer
+)
 from deept_mt.quantization.quantized_modules import (
     QuantizedLinear,
     QuantizedLinearRelu
@@ -55,8 +60,22 @@ class QuantTransformer(nn.Module):
             variance_scaling_scale = config['variance_scaling_scale'],
             stepwise = config['stepwise'],
             use_sinusodial_pos_embed = config['use_sinusodial_pos_embed', True],
-            bits = config['quantized_bits'],
-            activation_quantizer = config['activation_quantizer'],
+            # -- QuantTransformer
+            weight_quant_dtype = config['weight_quant_dtype'],
+            weight_quant_method = config['weight_quant_method'],
+            activation_quant_dtype = config['activation_quant_dtype'],
+            activation_quant_method = config['activation_quant_method'],
+            dot_quant_dtype = config['dot_quant_dtype'],
+            dot_quant_method = config['dot_quant_method'],
+            Av_quant_dtype = config['Av_quant_dtype'],
+            Av_quant_method = config['Av_quant_method'],
+            bits_others = config['bits_others'],
+            bits_Wq = config['bits_Wq'],
+            bits_Wk = config['bits_Wk'],
+            bits_Wv = config['bits_Wv'],
+            bits_dot = config['bits_dot'],
+            bits_Av = config['bits_Av'],
+            bits_Wo = config['bits_Wo'],
         )
 
         return model
@@ -70,7 +89,7 @@ class QuantTransformer(nn.Module):
         
         checkpoint = torch.load(checkpoint_path, map_location=Settings.get_device())
 
-        for k,v in self.state_dict().items():
+        for k, v in self.state_dict().items():
             if k not in checkpoint['model']:
                 if 'observer' not in k:
                     raise AssertionError(f"""Error loading weights from checkpoint.
@@ -180,15 +199,52 @@ class TransformerEncoderLayer(nn.Module):
             setattr(self, k, v)
         
         self.lnorm1 = LayerNormalization(self.model_dim)
-        self.att = QuantizedMultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
-        self.dropout = nn.Dropout(self.dropout)
-
-        self.quant_ff1 = create_activation_quantizer(self.bits, self.activation_quantizer)
-        self.quant_ff2 = create_activation_quantizer(self.bits, self.activation_quantizer)
+        self.att = self.__create_multi_head_attention()
 
         self.lnorm2 = LayerNormalization(self.model_dim)
-        self.ff1 = QuantizedLinearRelu(self.model_dim, self.ff_dim, self.bits)
-        self.ff2 = QuantizedLinear(self.ff_dim, self.model_dim, self.bits)
+
+        if self.bits_others < 64:
+            self.ff1 = QuantizedLinearRelu(self.model_dim, self.ff_dim, 
+                bits=self.bits_others,
+                weight_quant_dtype=self.weight_quant_dtype,
+                weight_quant_method=self.weight_quant_method,
+                activation_quant_dtype=self.activation_quant_dtype,
+                activation_quant_method=self.activation_quant_method
+            )
+        else:
+            self.ff1 = nn.Linear(self.model_dim, self.ff_dim)
+            self.relu = nn.ReLU()
+
+        if self.bits_others < 64:
+            self.ff2 = QuantizedLinear(self.ff_dim, self.model_dim, 
+                bits=self.bits_others,
+                weight_quant_dtype=self.weight_quant_dtype,
+                weight_quant_method=self.weight_quant_method,
+                activation_quant_dtype=self.activation_quant_dtype,
+                activation_quant_method=self.activation_quant_method
+            )
+        else:
+            self.ff2 = nn.Linear(self.ff_dim, self.model_dim)
+
+        self.dropout = nn.Dropout(self.dropout)
+
+    def __create_multi_head_attention(self):
+        return QuantizedMultiHeadAttention(self.nHeads, self.model_dim, self.dropout,
+            weight_quant_dtype = self.weight_quant_dtype,
+            weight_quant_method = self.weight_quant_method,
+            activation_quant_dtype = self.activation_quant_dtype,
+            activation_quant_method = self.activation_quant_method,
+            dot_quant_dtype = self.dot_quant_dtype,
+            dot_quant_method = self.dot_quant_method,
+            Av_quant_dtype = self.Av_quant_dtype,
+            Av_quant_method = self.Av_quant_method,
+            bits_Wq = self.bits_Wq,
+            bits_Wk = self.bits_Wk,
+            bits_Wv = self.bits_Wv,
+            bits_dot = self.bits_dot,
+            bits_Av = self.bits_Av,
+            bits_Wo = self.bits_Wo
+        )
 
     def __call__(self, x, src_mask=None):
 
@@ -200,9 +256,9 @@ class TransformerEncoderLayer(nn.Module):
 
         r = x
         x = self.lnorm2(x)
-        x = self.quant_ff1(x)
         x = self.ff1(x)
-        x = self.quant_ff2(x)
+        if self.bits_others >= 64:
+            x = self.relu(x)
         x = self.ff2(x)
         x = self.dropout(x)
         x = x + r
@@ -219,19 +275,55 @@ class TransformerDecoderLayer(nn.Module):
             setattr(self, k, v)
 
         self.lnorm1 = LayerNormalization(self.model_dim)
-        self.self_att = QuantizedMultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
+        self.self_att = self.__create_multi_head_attention()
         self.self_att_state = DynamicState(time_dim=1, stepwise=self.stepwise)
 
         self.lnorm2 = LayerNormalization(self.model_dim)
-        self.cross_att = QuantizedMultiHeadAttention(self.nHeads, self.model_dim, self.dropout)
-
-        self.quant_ff1 = create_activation_quantizer(self.bits, self.activation_quantizer)
-        self.quant_ff2 = create_activation_quantizer(self.bits, self.activation_quantizer)
+        self.cross_att = self.__create_multi_head_attention()
 
         self.lnorm3 = LayerNormalization(self.model_dim)
-        self.ff1 = QuantizedLinearRelu(self.model_dim, self.ff_dim, self.bits)
-        self.ff2 = QuantizedLinear(self.ff_dim, self.model_dim, self.bits)
+        if self.bits_others < 64:
+            self.ff1 = QuantizedLinearRelu(self.model_dim, self.ff_dim, 
+                bits=self.bits_others,
+                weight_quant_dtype=self.weight_quant_dtype,
+                weight_quant_method=self.weight_quant_method,
+                activation_quant_dtype=self.activation_quant_dtype,
+                activation_quant_method=self.activation_quant_method
+            )
+        else:
+            self.ff1 = nn.Linear(self.model_dim, self.ff_dim)
+            self.relu = nn.ReLU()
+
+        if self.bits_others < 64:
+            self.ff2 = QuantizedLinear(self.ff_dim, self.model_dim,
+                bits=self.bits_others,
+                weight_quant_dtype=self.weight_quant_dtype,
+                weight_quant_method=self.weight_quant_method,
+                activation_quant_dtype=self.activation_quant_dtype,
+                activation_quant_method=self.activation_quant_method
+            )
+        else:
+            self.ff2 = nn.Linear(self.ff_dim, self.model_dim)
+
         self.dropout = nn.Dropout(self.dropout)
+
+    def __create_multi_head_attention(self):
+        return QuantizedMultiHeadAttention(self.nHeads, self.model_dim, self.dropout,
+            weight_quant_dtype = self.weight_quant_dtype,
+            weight_quant_method = self.weight_quant_method,
+            activation_quant_dtype = self.activation_quant_dtype,
+            activation_quant_method = self.activation_quant_method,
+            dot_quant_dtype = self.dot_quant_dtype,
+            dot_quant_method = self.dot_quant_method,
+            Av_quant_dtype = self.Av_quant_dtype,
+            Av_quant_method = self.Av_quant_method,
+            bits_Wq = self.bits_Wq,
+            bits_Wk = self.bits_Wk,
+            bits_Wv = self.bits_Wv,
+            bits_dot = self.bits_dot,
+            bits_Av = self.bits_Av,
+            bits_Wo = self.bits_Wo
+        )
 
     def __call__(self, s, h, src_mask=None, tgt_mask=None):
 
@@ -250,9 +342,9 @@ class TransformerDecoderLayer(nn.Module):
 
         r = s
         s = self.lnorm3(s)
-        s = self.quant_ff1(s)
         s = self.ff1(s)
-        s = self.quant_ff2(s)
+        if self.bits_others >= 64:
+            s = self.relu(s)
         s = self.ff2(s)
         s = self.dropout(s)
         s = s + r
@@ -262,22 +354,87 @@ class TransformerDecoderLayer(nn.Module):
 
 class QuantizedMultiHeadAttention(nn.Module):
 
-    def __init__(self, H, D, dropout):
+    def __init__(self, H, D, dropout,
+        weight_quant_dtype = 'quint8',
+        weight_quant_method = 'per_tensor',
+        activation_quant_dtype = 'quint8',
+        activation_quant_method = 'per_tensor',
+        dot_quant_dtype = 'quint8',
+        dot_quant_method = 'per_channel',
+        Av_quant_dtype = 'quint8',
+        Av_quant_method = 'per_tensor',
+        bits_Wq = 8,
+        bits_Wk = 8,
+        bits_Wv = 8,
+        bits_dot = 8,
+        bits_Av = 8,
+        bits_Wo = 8
+    ):
         super().__init__()
 
         self.H = H
         self.D = D
         self.Dh = D // H
-        
-        self.W_q = nn.Linear(D, D)
-        self.W_k = nn.Linear(D, D)
-        self.W_v = nn.Linear(D, D)
-        self.W_o = nn.Linear(D, D)
+
+        self.bits_dot = bits_dot
+        self.bits_Av = bits_Av
+
+        self.weight_quant_dtype = weight_quant_dtype
+        self.weight_quant_method = weight_quant_method
+        self.activation_quant_dtype = activation_quant_dtype
+        self.activation_quant_method = activation_quant_method
+        self.dot_quant_dtype = get_dtype_from_string(dot_quant_dtype)
+        self.dot_quant_method = dot_quant_method
+        self.Av_quant_dtype = get_dtype_from_string(Av_quant_dtype)
+        self.Av_quant_method = Av_quant_method
+
+        self.W_q = self.__create_linear_layer(bits_Wq)
+        self.W_k = self.__create_linear_layer(bits_Wk)
+        self.W_v = self.__create_linear_layer(bits_Wv)
+        self.W_o = self.__create_linear_layer(bits_Wo)
+
+        if bits_dot < 64:
+            self.q_quantizer = FakeActivationQuantizer(
+                bits_dot,
+                self.dot_quant_dtype,
+                self.dot_quant_method,
+                channel_axis=3
+            )
+            self.k_quantizer = FakeActivationQuantizer(
+                bits_dot,
+                self.dot_quant_dtype,
+                self.dot_quant_method,
+                channel_axis=2
+            )
+
+        if bits_Av < 64:
+            self.a_quantizer = FakeWeightQuantizer(
+                bits_Av,
+                self.Av_quant_dtype,
+                self.Av_quant_method
+            )
+            self.v_quantizer = FakeActivationQuantizer(
+                bits_Av,
+                self.Av_quant_dtype,
+                self.Av_quant_method
+            )
 
         self.denom = math.sqrt(self.Dh)
 
         self.softmax = nn.Softmax(-1)
         self.dropout = nn.Dropout(dropout)
+
+    def __create_linear_layer(self, bits):
+        if bits < 64:
+            return QuantizedLinear(self.D, self.D,
+                bits=bits,
+                weight_quant_dtype=self.weight_quant_dtype,
+                weight_quant_method=self.weight_quant_method,
+                activation_quant_dtype=self.activation_quant_dtype,
+                activation_quant_method=self.activation_quant_method
+            )
+        else:
+            return nn.Linear(D, D)
 
     def __call__(self, q, k, v, m=None):
         
@@ -298,6 +455,10 @@ class QuantizedMultiHeadAttention(nn.Module):
 
         k = torch.transpose(k, -2, -1)
 
+        if self.bits_dot < 64:
+            q = self.q_quantizer(q)
+            k = self.k_quantizer(k)
+
         a = torch.matmul(q, k)
         a = a / self.denom
 
@@ -306,6 +467,10 @@ class QuantizedMultiHeadAttention(nn.Module):
 
         a = self.softmax(a)
         a = self.dropout(a)
+
+        if self.bits_Av < 64:
+            a = self.a_quantizer(a)
+            v = self.v_quantizer(v)
 
         o = torch.matmul(a, v)
 
