@@ -24,19 +24,22 @@ data_len_fn:        'mt_tgt_len_fn'
 postprocessing_fn:  'mt_postprocess'
 
 search_test_set:          False
-batch_size:               8192    # [target tokens without padding]
+batch_size:               2048    # [target tokens without padding]
 batch_size_search:        100     # [num sentences]
-update_freq:              2
+update_freq:              8
 min_sample_size:          3
 max_sample_size:          128
 
 dataloader_workers:                   4
-buffer_size_bucketing:                10 # 50000
-buffer_size_batch_shuffling:          10 # 1000
-buffer_size_shuffle_before_batching:  10 # 150000
+buffer_size_bucketing:                50000
+buffer_size_batch_shuffling:          1000
+buffer_size_shuffle_before_batching:  150000
 
 mixed_precision_training: False
+
 quantize_post_training:   True
+post_training_quant_type: 'manual_calibration'
+
 quantize_backend:         'x86'  # ['x86', 'qnnpack']
 model_uses_qat:           True
 
@@ -52,12 +55,13 @@ number_of_gpus:   1
 seed:             80420
 deterministic:    False
 
-checkpoints:            True
-checkpoint_unit:        'Step'  # ['Step', 'Epoch']
-checkpoint_strategy:    'All'   # ['All', 'Best']
-checkpoint_period:      300
-checkpoint_start_after: 3000
-units_to_train:         30000
+checkpoints:                True
+checkpoint_unit:            'Step'  # ['Step', 'Epoch']
+checkpoint_strategy:        'All'   # ['All', 'Best']
+checkpoint_period:          300
+checkpoint_start_after:     1 # Start directly
+units_to_train:             30000
+checkpoint_strict_loading:  False
 
 average_last_after_best_checkpoints:  True
 average_last_checkpoints:             True

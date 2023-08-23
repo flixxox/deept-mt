@@ -69,7 +69,15 @@ class QuantTransformer(nn.Module):
     def init_weights_from_checkpoint(self, checkpoint_path):
         
         checkpoint = torch.load(checkpoint_path, map_location=Settings.get_device())
-        self.load_state_dict(checkpoint['model'])
+
+        for k,v in self.state_dict().items():
+            if k not in checkpoint['model']:
+                if 'observer' not in k:
+                    raise AssertionError(f"""Error loading weights from checkpoint.
+                        Only observer variables should be missing but did not find {k}!
+                    """)
+
+        self.load_state_dict(checkpoint['model'], strict=False)
     
     def __call__(self, src, tgt):
 

@@ -46,8 +46,7 @@ class MinMaxFakeWeightQuantizer(nn.Module):
             else:
                 args = self.args
 
-        x = torch.quantize_per_tensor(x, *args, self.dtype)
-        x = x.dequantize()
+        x = torch.fake_quantize_per_tensor_affine(x, *args, self.quant_min, self.quant_max)
 
         return x
 
@@ -69,9 +68,8 @@ class MinMaxFakeActivationQuantizer(nn.Module):
     def __call__(self, x):
 
         x = self.observer(x)
-        args = self.observer.calculate_qparams()
+        scale, zp = self.observer.calculate_qparams()
 
-        x = torch.quantize_per_tensor(x, *args, self.dtype)
-        x = x.dequantize()
+        x = torch.fake_quantize_per_tensor_affine(x, scale, zp, self.quant_min, self.quant_max)
 
         return x

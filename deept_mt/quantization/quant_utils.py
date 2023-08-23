@@ -9,7 +9,7 @@ def get_quantization_range_from_bits(bits, dtype):
 
     elif dtype == torch.quint8:
         quant_min = 0
-        quant_max = (2**bits)
+        quant_max = (2**bits)-1
 
     else:
         raise ValueError(f'Unrecognized dtype {dtype}')
