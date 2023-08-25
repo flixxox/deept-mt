@@ -35,7 +35,7 @@ buffer_size_bucketing:                50000
 buffer_size_batch_shuffling:          1000
 buffer_size_shuffle_before_batching:  150000
 
-mixed_precision_training: True
+mixed_precision_training: False
 quantize_post_training:   False
 quantize_backend:         'x86'  # ['x86', 'qnnpack']
 
@@ -45,7 +45,7 @@ buffer_sort_search: 1000
 
 number_of_gpus:   1
 seed:             80420
-deterministic:    False
+deterministic:    True
 
 checkpoints:            True
 checkpoint_unit:        'Step'  # ['Step', 'Epoch']

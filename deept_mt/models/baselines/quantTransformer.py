@@ -200,7 +200,7 @@ class TransformerEncoderLayer(nn.Module):
         
         self.lnorm1 = LayerNormalization(self.model_dim)
         self.att = self.__create_multi_head_attention()
-
+        
         self.lnorm2 = LayerNormalization(self.model_dim)
 
         if self.bits_others < 64:
@@ -225,7 +225,6 @@ class TransformerEncoderLayer(nn.Module):
             )
         else:
             self.ff2 = nn.Linear(self.ff_dim, self.model_dim)
-
         self.dropout = nn.Dropout(self.dropout)
 
     def __create_multi_head_attention(self):
@@ -419,7 +418,7 @@ class QuantizedMultiHeadAttention(nn.Module):
                 self.Av_quant_method
             )
 
-        self.denom = math.sqrt(self.Dh)
+        self.denom = math.sqrt(self.D)
 
         self.softmax = nn.Softmax(-1)
         self.dropout = nn.Dropout(dropout)
@@ -434,7 +433,7 @@ class QuantizedMultiHeadAttention(nn.Module):
                 activation_quant_method=self.activation_quant_method
             )
         else:
-            return nn.Linear(D, D)
+            return nn.Linear(self.D, self.D)
 
     def __call__(self, q, k, v, m=None):
         
