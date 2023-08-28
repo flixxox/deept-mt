@@ -24,9 +24,9 @@ data_len_fn:        'mt_tgt_len_fn'
 postprocessing_fn:  'mt_postprocess'
 
 search_test_set:          False
-batch_size:               1024    # [target tokens without padding]
+batch_size:               8192    # [target tokens without padding]
 batch_size_search:        100     # [num sentences]
-update_freq:              16
+update_freq:              2
 min_sample_size:          3
 max_sample_size:          128
 
@@ -37,63 +37,23 @@ buffer_size_shuffle_before_batching:  150000
 
 buffer_sort_search: 1000
 
-# ------ Quantization Params
-
 mixed_precision_training: False
-
-quantize_post_training:   True
-post_training_quant_type: 'calibration'
-
-data_calib_root:          '/home/fschmidt/data/iwslt/de-en/webdataset'
-data_calib_mask:          'train.tar'
-quant_calibration_steps:    30 # times batch size = num sentences
-
-# Loading weight is not used in PQT
-load_weights: False
-load_weights_from: '/nas/models/neurosys/output/baselines/transformer.iwslt.de-en/middle/output/checkpoints/ckpt-avg-last.pt'
-
+quantize_post_training:   False
 quantize_backend:         'x86'  # ['x86', 'qnnpack']
-model_uses_qat:           False
 
-# MinMax observer
-weight_quant_dtype:   'qint8' # ['qint8', 'quint8']
-weight_quant_method:  'per_tensor' # ['per_tensor']
-
-# MovingAverageMinMax observer
-activation_quant_dtype:   'qint8' # ['qint8', 'quint8']
-activation_quant_method:  'per_tensor' # ['per_tensor', 'per_channel']
-
-# MovingAverageMinMax observer
-dot_quant_dtype:   'qint8' # ['qint8', 'quint8']
-dot_quant_method:  'per_tensor' # ['per_tensor', 'per_channel']
-
-# MovingAverageMinMax observer
-Av_quant_dtype:   'qint8' # ['qint8', 'quint8']
-Av_quant_method:  'per_tensor' # ['per_tensor', 'per_channel']
-
-# Remark: bits >= 64 => no quant
-bits_others: 8
-# Bits for attention 
-bits_Wq:    8
-bits_Wk:    8
-bits_Wv:    8
-bits_dot:   2
-bits_Av:    2
-bits_Wo:    8
-
-# ------
+load_weights: True
+load_weights_from: '/nas/models/neurosys/output/baselines/transformer.iwslt.de-en/middle/output/checkpoints/ckpt-avg-last.pt'
 
 number_of_gpus:   1
 seed:             80420
-deterministic:    False
+deterministic:    True
 
-checkpoints:                True
-checkpoint_unit:            'Step'  # ['Step', 'Epoch']
-checkpoint_strategy:        'All'   # ['All', 'Best']
-checkpoint_period:          300
-checkpoint_start_after:     1 # Start directly
-units_to_train:             30000
-checkpoint_strict_loading:  False
+checkpoints:            True
+checkpoint_unit:        'Step'  # ['Step', 'Epoch']
+checkpoint_strategy:    'All'   # ['All', 'Best']
+checkpoint_period:      300
+checkpoint_start_after: 1 # 3000
+units_to_train:         30000
 
 average_last_after_best_checkpoints:  True
 average_last_checkpoints:             True
@@ -101,7 +61,7 @@ checkpoints_to_average:               30
 best_checkpoint_indicator:            'ppl'
 
 # MIDDLE
-model:        'QuantTransformer'
+model:        'Transformer'
 model_input:  ['src', 'tgt']
 encL:         6
 decL:         3
@@ -110,17 +70,6 @@ ff_dim:       1024
 dropout:      0.2
 nHeads:       4
 tiew:         True
-
-# BASE
-# model:        'QuantTransformer'
-# model_input:  ['src', 'tgt']
-# encL:         6
-# decL:         6
-# model_dim:    512
-# ff_dim:       1024
-# dropout:      0.3
-# nHeads:       8
-# tiew:         True
 
 initializer:              'GlorotUniform'
 variance_scaling_scale:   0.78

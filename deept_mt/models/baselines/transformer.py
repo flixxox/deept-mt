@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 
 from deept.util.debug import my_print
-from deept.util.globals import Context
 from deept.model.state import DynamicState
 from deept.model.model import register_model
+from deept.util.globals import Context, Settings
 from deept.model.modules import (
     SinusodialPositionalEmbedding,
     PositionalEmbedding,
@@ -58,6 +58,10 @@ class Transformer(nn.Module):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
+    
+    def init_weights_from_checkpoint(self, checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=Settings.get_device())
+        self.load_state_dict(checkpoint['model'], strict=True)
     
     def __call__(self, src, tgt):
 
