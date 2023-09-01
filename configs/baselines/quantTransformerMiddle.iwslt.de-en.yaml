@@ -70,14 +70,14 @@ dot_quant_method:  'per_tensor' # ['per_tensor', 'per_channel']
 Av_quant_dtype:   'qint8' # ['qint8', 'quint8']
 Av_quant_method:  'per_tensor' # ['per_tensor', 'per_channel']
 
-# Remark: bits >= 64 => no quant
+# Remark: bits >= 32 => no quant
 bits_others: 8
 # Bits for attention 
 bits_Wq:    8
 bits_Wk:    8
 bits_Wv:    8
-bits_dot:   3
-bits_Av:    3
+bits_dot:   2
+bits_Av:    2
 bits_Wo:    8
 
 # ------

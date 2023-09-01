@@ -81,9 +81,14 @@ class QuantTransformer(nn.Module):
         return model
 
     def init_weights(self):
+
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
+
+        size_bytes = self.calculate_model_size_in_bytes()
+
+        my_print(f'Model size: {(size_bytes/1e6):6.1f}MBit!')
 
     def init_weights_from_checkpoint(self, checkpoint_path):
         
@@ -124,6 +129,31 @@ class QuantTransformer(nn.Module):
                 'tgt_mask': tgt_mask}
         else:
             return {'src_mask': src_mask}
+
+    def calculate_model_size_in_bytes(self):
+
+        size_bytes = 0
+        number_of_params = 0
+        for name, p in self.named_parameters():
+            number_of_params += p.numel()
+            if 'weight' in name:
+                if 'ff1' in name or 'ff2' in name:
+                    size_bytes += (p.numel()*self.bits_others)
+                elif 'W_q' in name:
+                    size_bytes += (p.numel()*self.bits_Wq)
+                elif 'W_k' in name:
+                    size_bytes += (p.numel()*self.bits_Wk)
+                elif 'W_v' in name:
+                    size_bytes += (p.numel()*self.bits_Wv)
+                elif 'W_o' in name:
+                    size_bytes += (p.numel()*self.bits_Wo)
+                else:
+                    size_bytes += (p.numel()*32)
+            else:
+                size_bytes += (p.numel()*32)
+
+        return size_bytes
+
 
 
 class TransformerEncoder(nn.Module):
@@ -203,7 +233,7 @@ class TransformerEncoderLayer(nn.Module):
         
         self.lnorm2 = LayerNormalization(self.model_dim)
 
-        if self.bits_others < 64:
+        if self.bits_others < 16:
             self.ff1 = QuantizedLinearRelu(self.model_dim, self.ff_dim, 
                 bits=self.bits_others,
                 weight_quant_dtype=self.weight_quant_dtype,
@@ -215,7 +245,7 @@ class TransformerEncoderLayer(nn.Module):
             self.ff1 = nn.Linear(self.model_dim, self.ff_dim)
             self.relu = nn.ReLU()
 
-        if self.bits_others < 64:
+        if self.bits_others < 16:
             self.ff2 = QuantizedLinear(self.ff_dim, self.model_dim, 
                 bits=self.bits_others,
                 weight_quant_dtype=self.weight_quant_dtype,
@@ -256,7 +286,7 @@ class TransformerEncoderLayer(nn.Module):
         r = x
         x = self.lnorm2(x)
         x = self.ff1(x)
-        if self.bits_others >= 64:
+        if self.bits_others >= 16:
             x = self.relu(x)
         x = self.ff2(x)
         x = self.dropout(x)
@@ -281,7 +311,7 @@ class TransformerDecoderLayer(nn.Module):
         self.cross_att = self.__create_multi_head_attention()
 
         self.lnorm3 = LayerNormalization(self.model_dim)
-        if self.bits_others < 64:
+        if self.bits_others < 16:
             self.ff1 = QuantizedLinearRelu(self.model_dim, self.ff_dim, 
                 bits=self.bits_others,
                 weight_quant_dtype=self.weight_quant_dtype,
@@ -293,7 +323,7 @@ class TransformerDecoderLayer(nn.Module):
             self.ff1 = nn.Linear(self.model_dim, self.ff_dim)
             self.relu = nn.ReLU()
 
-        if self.bits_others < 64:
+        if self.bits_others < 16:
             self.ff2 = QuantizedLinear(self.ff_dim, self.model_dim,
                 bits=self.bits_others,
                 weight_quant_dtype=self.weight_quant_dtype,
@@ -342,7 +372,7 @@ class TransformerDecoderLayer(nn.Module):
         r = s
         s = self.lnorm3(s)
         s = self.ff1(s)
-        if self.bits_others >= 64:
+        if self.bits_others >= 16:
             s = self.relu(s)
         s = self.ff2(s)
         s = self.dropout(s)
@@ -392,7 +422,7 @@ class QuantizedMultiHeadAttention(nn.Module):
         self.W_v = self.__create_linear_layer(bits_Wv)
         self.W_o = self.__create_linear_layer(bits_Wo)
 
-        if bits_dot < 64:
+        if bits_dot < 16:
             self.q_quantizer = FakeActivationQuantizer(
                 bits_dot,
                 self.dot_quant_dtype,
@@ -406,7 +436,7 @@ class QuantizedMultiHeadAttention(nn.Module):
                 channel_axis=2
             )
 
-        if bits_Av < 64:
+        if bits_Av < 16:
             self.a_quantizer = FakeWeightQuantizer(
                 bits_Av,
                 self.Av_quant_dtype,
@@ -424,7 +454,7 @@ class QuantizedMultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def __create_linear_layer(self, bits):
-        if bits < 64:
+        if bits < 16:
             return QuantizedLinear(self.D, self.D,
                 bits=bits,
                 weight_quant_dtype=self.weight_quant_dtype,
@@ -454,7 +484,7 @@ class QuantizedMultiHeadAttention(nn.Module):
 
         k = torch.transpose(k, -2, -1)
 
-        if self.bits_dot < 64:
+        if self.bits_dot < 16:
             q = self.q_quantizer(q)
             k = self.k_quantizer(k)
 
@@ -467,7 +497,7 @@ class QuantizedMultiHeadAttention(nn.Module):
         a = self.softmax(a)
         a = self.dropout(a)
 
-        if self.bits_Av < 64:
+        if self.bits_Av < 16:
             a = self.a_quantizer(a)
             v = self.v_quantizer(v)
 
