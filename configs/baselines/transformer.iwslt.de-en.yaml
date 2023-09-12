@@ -57,8 +57,7 @@ average_last_checkpoints:             True
 checkpoints_to_average:               30
 best_checkpoint_indicator:            'ppl'
 
-# BASE
-model:        'QuantTransformer'
+model:        'Transformer'
 model_input:  ['src', 'tgt']
 encL:         6
 decL:         6

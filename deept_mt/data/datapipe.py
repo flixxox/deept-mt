@@ -35,8 +35,9 @@ class WebDatasetTextDecoderIterDataPipe(IterDataPipe):
             yield self.webdataset_text_decode(d)
 
     def webdataset_text_decode(self, item):
-        key, value = item
-        return key, value.read().decode('utf-8')
+        item['source'] = item['source'].decode('utf-8')
+        item['target'] = item['target'].decode('utf-8')
+        return item
 
     def __len__(self):
         raise NotImplementedError('Error! Do not invoke len(datapipe).')
@@ -255,7 +256,8 @@ class MTPreprocesserIterDataPipe(IterDataPipe):
         idx = int(idx.split('/')[-1].split('sample')[-1])
 
         normalized_dict = {
-            '__key__': idx
+            '__key__': idx,
+            '__url__': item['__url__']
         }
 
         for k, v in item.items():
@@ -345,7 +347,8 @@ class MTCollaterIterDataPipe(IterDataPipe):
     def mt_collate(self, item):
 
         dict_collated = {
-            '__keys__': [x['__key__'] for x in item]
+            '__keys__': [x['__key__'] for x in item],
+            '__url__': item[0]['__url__'] # Its the same within a batch
         }
 
         pad_index = self.vocab_src.PAD

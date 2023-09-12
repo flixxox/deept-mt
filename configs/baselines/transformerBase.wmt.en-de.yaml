@@ -1,11 +1,11 @@
 # Pipeline Arguments
-qsub_mem_train:   '32G'
+qsub_mem_train:   '16G'
 qsub_time_train:  '168:00:00'
 qsub_mem_search:  '8G'
 qsub_time_search: '48:00:00'
 
-data_train_root:  '/home/fschmidt/data/wmt14/en-de/webdataset'
-data_train_mask:  'train.tar'
+data_train_root:  '/home/fschmidt/data/wmt14/en-de/webdataset/train'
+data_train_mask:  'train-{0000..0015}.tar'
 
 data_dev_root:    '/home/fschmidt/data/wmt14/en-de/webdataset'
 data_dev_mask:    'dev.tar'
@@ -26,22 +26,24 @@ data_collate:       'mt_collate'
 data_len_fn:        'mt_tgt_len_fn'
 postprocessing_fn:  'mt_postprocess'
 
-search_test_set:          True
 batch_size:               1700  # [target tokens without padding]
-batch_size_search:        100   # [target tokens without padding]
+batch_size_search:        100   # sentences
 update_freq:              16
 min_sample_size:          3
 max_sample_size:          128
 
-dataloader_workers:                   4
-buffer_size_bucketing:                50000
-buffer_size_batch_shuffling:          1000
-buffer_size_shuffle_before_batching:  150000
+dataloader_workers:     4
+buffer_size_bucketing:  80000   # The amount of samples that are buffered and sorted
+buffer_size_samples:    150000
+buffer_size_batches:    1000
 
-number_of_gpus:   1
-seed:             80420
-deterministic:    False
-
+number_of_gpus:           2
+seed:                     80420
+deterministic:            False
+pin_memory:               True
+search_test_set:          True
+print_per_step_summary:   True
+print_per_step_mem_usage: True
 mixed_precision_training: True
 
 checkpoints:                  True

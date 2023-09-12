@@ -155,7 +155,6 @@ class QuantTransformer(nn.Module):
         return size_bytes
 
 
-
 class TransformerEncoder(nn.Module):
 
     def __init__(self, **kwargs):
