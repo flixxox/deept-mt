@@ -1,5 +1,6 @@
 
 import torch
+from tensordict import TensorDict
 
 from torchdata.datapipes.iter import IterDataPipe
 
@@ -362,9 +363,18 @@ class MTCollaterIterDataPipe(IterDataPipe):
         t = [[eos_index_tgt] + x['tgt'] + [pad_index] * (max_t - len(x['tgt'])) for x in item]
         o = [x['tgt'] + [eos_index_tgt] + [pad_index] * (max_t - len(x['tgt'])) for x in item]
 
-        dict_collated['src'] = torch.tensor(s)
-        dict_collated['tgt'] = torch.tensor(t)
-        dict_collated['out'] = torch.tensor(o)
+        s = torch.tensor(s)
+        t = torch.tensor(t)
+        o = torch.tensor(o)
+
+        dict_collated['tensors'] = TensorDict(
+            {
+                'src': s,
+                'tgt': t,
+                'out': o,
+            },
+            batch_size = s.shape[0]
+        )
 
         return dict_collated
 
