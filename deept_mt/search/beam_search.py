@@ -37,7 +37,7 @@ class MTBeamSearch:
             dynamic_states = MTBeamSearch.get_dynamic_states(model),
             input_keys = config['beam_search_input'],
             D = config['model_dim'],
-            maxI = config['max_sample_size'],
+            maxI = config['max_sample_size_search'],
             beam_size = config['beam_size'],
             length_norm = config['length_norm', True],
             use_penalty = (config['length_penalty', 0.] > 0.),

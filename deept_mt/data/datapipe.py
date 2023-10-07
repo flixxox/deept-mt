@@ -232,7 +232,10 @@ class MTPreprocesserIterDataPipe(IterDataPipe):
             vocab_tgt,
         )
 
-        pipe = MTLengthFilterIterDataPipe.create_from_config(config, pipe)
+        if Settings.is_training():
+            pipe = MTLengthFilterTrainIterDataPipe.create_from_config(config, pipe)
+        else:
+            pipe = MTLengthFilterSearchIterDataPipe.create_from_config(config, pipe)
 
         return pipe
 
@@ -283,7 +286,7 @@ class MTPreprocesserIterDataPipe(IterDataPipe):
         raise NotImplementedError('Error! Do not invoke len(datapipe).')
 
 
-class MTLengthFilterIterDataPipe(IterDataPipe):
+class MTLengthFilterTrainIterDataPipe(IterDataPipe):
 
     def __init__(self, 
         source_dp,
@@ -300,10 +303,10 @@ class MTLengthFilterIterDataPipe(IterDataPipe):
     @staticmethod
     def create_from_config(config, source_dp):
 
-        min_length = config['min_sample_size', 0]
-        max_length = config['max_sample_size', None]
+        min_length = config['min_sample_size_train', 0]
+        max_length = config['max_sample_size_train', None]
 
-        return MTLengthFilterIterDataPipe(
+        return MTLengthFilterTrainIterDataPipe(
             source_dp,
             min_length,
             max_length
@@ -323,9 +326,46 @@ class MTLengthFilterIterDataPipe(IterDataPipe):
             tgt_len >= self.min_length and
             tgt_len <= self.max_length
         )
-    
-    def __len__(self):
-        raise NotImplementedError('Error! Do not invoke len(datapipe).')
+
+
+class MTLengthFilterSearchIterDataPipe(IterDataPipe):
+
+    def __init__(self, 
+        source_dp,
+        min_length,
+        max_length
+    ):
+        super().__init__()
+
+        self.source_dp = source_dp
+
+        self.min_length = min_length
+        self.max_length = max_length
+
+    @staticmethod
+    def create_from_config(config, source_dp):
+
+        min_length = config['min_sample_size_search', 0]
+        max_length = config['max_sample_size_search', None]
+
+        return MTLengthFilterSearchIterDataPipe(
+            source_dp,
+            min_length,
+            max_length
+        )
+
+    def __iter__(self):
+        for item in self.source_dp:
+            if not self.length_filter(item):
+                item['src'] = item['src'][:self.max_length-2]
+            yield item
+
+    def length_filter(self, item):
+        src_len = len(item['src'])+2
+        return (
+            src_len >= self.min_length and
+            src_len <= self.max_length
+        )
 
 
 @register_dp_collate('mt_collate')

@@ -44,7 +44,7 @@ class Transformer(nn.Module):
             nHeads = config['nHeads'],
             ff_dim = config['ff_dim'],
             dropout = config['dropout'],
-            maxI = config['max_sample_size'],
+            maxI = config['max_sample_size_train'],
             tiew = config['tiew'],
             initializer = config['initializer'],
             variance_scaling_scale = config['variance_scaling_scale'],
