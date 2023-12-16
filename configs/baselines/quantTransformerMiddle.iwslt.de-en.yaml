@@ -14,8 +14,8 @@ corpus_size_dev:  6750
 dev_src_comet:    '/home/fschmidt/data/iwslt/de-en/comet/dev.de.detok' # DeepT workflow
 dev_ref:          '/home/fschmidt/data/iwslt/de-en/ref/dev.en.detok' # DeepT workflow
 
-vocab_src:        '/home/fschmidt/data/iwslt/de-en/vocabs/source.vocab.pad.pkl'
-vocab_tgt:        '/home/fschmidt/data/iwslt/de-en/vocabs/target.vocab.pad.pkl'
+vocab_src:        '/home/fschmidt/data/iwslt/de-en/vocabs/source.vocab.pkl'
+vocab_tgt:        '/home/fschmidt/data/iwslt/de-en/vocabs/target.vocab.pkl'
 
 data_decoding:      'text'
 data_preprocess:    'mt_preprocess'
