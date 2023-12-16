@@ -23,12 +23,14 @@ data_collate:       'mt_collate'
 data_len_fn:        'mt_tgt_len_fn'
 postprocessing_fn:  'mt_postprocess'
 
-search_test_set:          False
-batch_size:               1024    # [target tokens without padding]
+batch_size:               8192    # [target tokens without padding]
 batch_size_search:        100     # [num sentences]
-update_freq:              16
-min_sample_size:          3
-max_sample_size:          128
+update_freq:              2
+
+min_sample_size_train:    3
+max_sample_size_train:    128
+min_sample_size_search:   0
+max_sample_size_search:   128
 
 dataloader_workers:                   4
 buffer_size_bucketing:                50000
@@ -36,6 +38,14 @@ buffer_size_batch_shuffling:          1000
 buffer_size_shuffle_before_batching:  150000
 
 buffer_sort_search: 1000
+
+number_of_gpus:           1
+seed:                     80420
+deterministic:            False
+pin_memory:               True
+search_test_set:          False
+print_per_step_summary:   False
+print_per_step_mem_usage: False
 
 # ------ Quantization Params
 
@@ -81,10 +91,6 @@ bits_Av:    3
 bits_Wo:    8
 
 # ------
-
-number_of_gpus:   1
-seed:             80420
-deterministic:    False
 
 checkpoints:                True
 checkpoint_unit:            'Step'  # ['Step', 'Epoch']
