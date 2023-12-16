@@ -59,7 +59,7 @@ quant_calibration_steps:    30 # times batch size = num sentences
 
 # Loading weight is not used in PQT
 load_weights: True
-load_weights_from: '/nas/models/neurosys/output/baselines/transformer.iwslt.de-en/middle/output/checkpoints/ckpt-avg-last.pt'
+load_weights_from: '/nas/models/neurosys/output/baselines/transformer.iwslt.de-en/baseline-new/output/checkpoints/ckpt-avg-last.pt'
 
 quantize_backend:         'x86'  # ['x86', 'qnnpack']
 model_uses_qat:           False
